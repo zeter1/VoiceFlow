@@ -1,0 +1,39 @@
+VoiceFlow Offline — CUDA/cuDNN/GPU
+==================================
+
+Для ускорения распознавания через NVIDIA GPU нужны:
+- NVIDIA Driver;
+- CUDA Toolkit 12.x;
+- cuDNN 9 для CUDA 12.x;
+- faster-whisper;
+- доступные DLL в PATH.
+
+Важные DLL:
+- cublas64_12.dll;
+- cudnn_ops64_9.dll.
+
+Проверка в CMD/PowerShell:
+where cublas64_12.dll
+where cudnn_ops64_9.dll
+
+Обе команды должны показать путь к файлу. Если ничего не найдено, программа может уйти на CPU или CUDA preflight не пройдёт.
+
+Рекомендуемые настройки для NVIDIA:
+- Устройство: cuda или auto;
+- Compute: int8_float16;
+- Модель: medium для скорости;
+- Модель: large-v3 для качества;
+- Профиль realtime: Баланс или Качество;
+- Интервал: 4–6 сек для качества.
+
+Если программа падает или CUDA не грузится:
+1. Поставь Устройство: cpu.
+2. Compute: int8.
+3. Модель: small или base.
+4. Запусти диктовку.
+5. Отправь diagnostics.json, crash.txt, voiceflow.txt.
+
+Почему CUDA важна:
+- large-v3 на CPU может быть слишком медленной для realtime;
+- на GPU large-v3 может работать нормально, если CUDA/cuDNN настроены;
+- если нужен стабильный realtime без задержек, medium + cuda/int8_float16 часто лучше, чем large-v3 на пределе.
