@@ -27,7 +27,7 @@ Install:
     pip install language-tool-python
 
 Run:
-    python voiceflow_realtime_current_cursor.py
+    python voiceflow.py
 
 Notes:
 - The first transcription downloads the local Whisper model once.
