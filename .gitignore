@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build / packaging
+build/
+dist/
+*.spec
+*.egg-info/
+
+# VoiceFlow runtime data
+voiceflow_logs/
+voiceflow_settings/
+*.log
+crash.txt
+diagnostics.json
+hotkey_trace.jsonl
+recording_state.jsonl
+notifications.jsonl
+streaming.jsonl
+worker_queue.jsonl
+insertion.jsonl
+dictation_text.txt
+
+# Local model/cache folders if placed in project
+.cache/
+cache/
+models/
+huggingface/
+
+# Temporary audio/data
+*.wav
+*.tmp
+*.temp
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
