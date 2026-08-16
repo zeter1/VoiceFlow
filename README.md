@@ -151,6 +151,20 @@ voiceflow_settings/settings.json
 
 They are intentionally excluded from the repository because they are user-specific runtime data.
 
+## Verification
+
+The repository includes a Windows GitHub Actions workflow that compiles the main source file on every push and pull request:
+
+```powershell
+python -m py_compile voiceflow.py
+```
+
+The CI check is intentionally lightweight and does not download Whisper models, access a microphone or initialize CUDA. Audio devices, GPU execution, hotkeys and realtime insertion still require real Windows testing.
+
 ## Documentation
 
 The repository includes the original Russian documentation from the application archive under `docs/`, including quick start, model warm-up, CUDA/cuDNN setup, voice commands, punctuation, logging and microphone troubleshooting.
+
+## License
+
+No open-source license is currently granted. The source code is published for portfolio and code-review purposes.
