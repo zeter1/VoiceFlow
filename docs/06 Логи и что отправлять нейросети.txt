@@ -1,0 +1,77 @@
+VoiceFlow Offline — логи и что отправлять нейросети
+===================================================
+
+Логи нужны, чтобы нейросеть могла понять реальную причину проблемы: горячая клавиша, состояние записи, распознавание, вставка, уведомление, микрофон, пунктуация или CUDA.
+
+Где лежат логи:
+voiceflow_logs/
+
+Каждый запуск создаёт отдельную папку:
+voiceflow_logs/run_YYYY-MM-DD_HH-MM-SS_PID/
+
+Последний запуск дублируется сюда:
+voiceflow_logs/_last_run/
+
+Если проблема свежая, отправляй нейросети всю папку:
+voiceflow_logs/_last_run/
+
+Главные файлы:
+- voiceflow.txt — общий лог программы.
+- dictation_text.txt — raw_text, cleaned_text, inserted_text, голосовые команды, фильтрация мусора.
+- diagnostics.json — Python, зависимости, CUDA DLL, пути, настройки.
+- crash.txt — ошибки и исключения.
+- hotkeys.jsonl — события горячей клавиши.
+- hotkey_trace.jsonl — подробнейшая трассировка F9/Windows polling.
+- recording_state.jsonl — старт, стоп, зависшие состояния, repair/watchdog.
+- worker_queue.jsonl — события из F9, трея и внутренних потоков.
+- insertion.jsonl — вставка текста в активное поле, Ctrl+V, hwnd/focus.
+- streaming.jsonl — фрагменты realtime, аудио-метрики, решения по паузам и пунктуации.
+- notifications.jsonl — показ, скрытие и позиция уведомления.
+
+Что отправлять при разных проблемах:
+
+Если F9 не стартует/не останавливает:
+- hotkey_trace.jsonl
+- hotkeys.jsonl
+- recording_state.jsonl
+- worker_queue.jsonl
+- voiceflow.txt
+
+Если запись идёт, но текст не вставляется:
+- dictation_text.txt
+- insertion.jsonl
+- streaming.jsonl
+- recording_state.jsonl
+- voiceflow.txt
+
+Если ввело одно предложение и потом замолчало:
+- streaming.jsonl
+- dictation_text.txt
+- recording_state.jsonl
+- voiceflow.txt
+
+Если плохо ставит точки:
+- streaming.jsonl
+- dictation_text.txt
+- voiceflow.txt
+
+Если уведомление прыгает/не двигается/пропало:
+- notifications.jsonl
+- voiceflow.txt
+- voiceflow_settings/settings.json, если можно отправить настройки
+
+Если слова пропускаются или неправильно распознаются:
+- dictation_text.txt
+- streaming.jsonl
+- diagnostics.json
+- напиши, какой микрофон, расстояние до рта и есть ли шум ПК/очистителя воздуха.
+
+Если CUDA/GPU не работает:
+- diagnostics.json
+- voiceflow.txt
+- crash.txt
+
+Важно:
+- dictation_text.txt может содержать всё, что ты диктовал;
+- перед отправкой удали личные данные, если они есть;
+- лучше отправлять логи сразу после воспроизведения проблемы, пока _last_run относится к нужному запуску.
