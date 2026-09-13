@@ -1,58 +1,58 @@
 # VoiceFlow
 
-Offline Windows voice dictation application built with Python and `faster-whisper`.
+Офлайн-приложение для голосового ввода текста в Windows, созданное на Python и `faster-whisper`.
 
-VoiceFlow listens to the microphone, recognizes speech locally and inserts confirmed text fragments directly into the currently focused input field while recording. It does **not** require an OpenAI API key and does not send recorded audio to the OpenAI API.
+VoiceFlow слушает микрофон, локально распознаёт речь и во время записи вставляет подтверждённые фрагменты текста прямо в то поле ввода, которое находится в фокусе в данный момент. Приложение **не требует API-ключ OpenAI** и не отправляет записанное аудио в OpenAI API.
 
-## Highlights
+## Возможности
 
-- Local speech recognition with **faster-whisper**.
-- Realtime dictation: recognized chunks are inserted while recording, not only after stopping.
-- Text follows the **current cursor/focused input field**: you can switch between Telegram, a browser, ChatGPT, documents, notes or code editors during one dictation session.
-- Configurable global hotkey (F9 is the recommended/default workflow in the documentation).
-- Microphone selection and refresh.
-- CPU and NVIDIA CUDA modes.
-- Configurable Whisper model, compute type and realtime quality/speed profile.
-- Voice commands for punctuation, new lines, editing and common keyboard actions.
-- Optional offline text cleanup and grammar correction with `language-tool-python`.
-- Native Windows paste/injection with fallback methods for applications where ordinary paste is unreliable.
-- Movable recording notification with persisted position.
-- System tray support and background operation.
-- Optional autostart through the Windows `HKCU\Run` registry key.
-- Persistent settings between launches.
-- Detailed per-launch diagnostic logs designed to help investigate hotkey, recording, streaming and insertion problems.
+- Локальное распознавание речи с помощью **faster-whisper**.
+- Голосовой ввод в реальном времени: распознанные фрагменты вставляются во время записи, а не только после её остановки.
+- Текст следует за **текущим курсором и активным полем ввода**: во время одной сессии диктовки можно переключаться между Telegram, браузером, ChatGPT, документами, заметками и редакторами кода.
+- Настраиваемая глобальная горячая клавиша (в документации рекомендуется и по умолчанию используется F9).
+- Выбор микрофона и обновление списка устройств.
+- Режимы работы на CPU и NVIDIA CUDA.
+- Настраиваемая модель Whisper, тип вычислений и профиль качества/скорости для распознавания в реальном времени.
+- Голосовые команды для знаков препинания, новых строк, редактирования и распространённых клавиатурных действий.
+- Опциональная локальная очистка текста и исправление грамматики с помощью `language-tool-python`.
+- Нативная вставка текста в Windows с резервными методами для приложений, где обычная вставка работает нестабильно.
+- Перемещаемое уведомление о записи с сохранением его позиции.
+- Поддержка системного трея и фоновой работы.
+- Опциональный автозапуск через ключ реестра Windows `HKCU\Run`.
+- Сохранение настроек между запусками.
+- Подробные диагностические логи для каждого запуска, помогающие разбирать проблемы с горячими клавишами, записью, потоковым распознаванием и вставкой текста.
 
-## How it works
+## Как это работает
 
-1. Put the cursor in any text field.
-2. Press the configured global hotkey.
-3. Speak normally.
-4. VoiceFlow records audio and processes stable speech fragments locally with `faster-whisper`.
-5. Confirmed fragments are inserted into the input field that is focused **at that moment**.
-6. You can switch to another application and move the cursor while recording; subsequent fragments will be inserted there.
-7. Press the hotkey again to stop.
+1. Установите курсор в любое поле ввода текста.
+2. Нажмите настроенную глобальную горячую клавишу.
+3. Говорите обычным голосом.
+4. VoiceFlow записывает аудио и локально обрабатывает стабильные фрагменты речи с помощью `faster-whisper`.
+5. Подтверждённые фрагменты вставляются в то поле ввода, которое находится в фокусе **в этот момент**.
+6. Во время записи можно переключиться в другое приложение и переместить курсор — следующие фрагменты будут вставляться уже туда.
+7. Нажмите горячую клавишу ещё раз, чтобы остановить запись.
 
-The application intentionally avoids a final large paste after stopping, which prevents already inserted realtime text from being duplicated.
+Приложение специально не выполняет одну большую финальную вставку после остановки записи. Это предотвращает дублирование текста, который уже был вставлен в режиме реального времени.
 
-## Privacy / offline behavior
+## Конфиденциальность и офлайн-работа
 
-Speech recognition is local after the Whisper model has been downloaded.
+После загрузки модели Whisper распознавание речи выполняется локально.
 
-- No OpenAI API key is required.
-- Recorded speech is not sent to the OpenAI API.
-- `faster-whisper` may download the selected model the first time it is used.
-- After the model is available locally, transcription runs on the local machine.
+- API-ключ OpenAI не требуется.
+- Записанная речь не отправляется в OpenAI API.
+- При первом использовании `faster-whisper` может загрузить выбранную модель.
+- После загрузки модели транскрибация выполняется локально на компьютере.
 
-## Requirements
+## Требования
 
 - Windows 10/11.
-- Python x64 3.11, 3.12 or 3.13 recommended by the bundled documentation.
-- A working microphone.
-- Python dependencies from `requirements.txt`.
+- Python x64 3.11, 3.12 или 3.13 — рекомендуемые версии согласно документации проекта.
+- Рабочий микрофон.
+- Python-зависимости из `requirements.txt`.
 
-For NVIDIA GPU acceleration, the bundled documentation recommends a recent NVIDIA driver, CUDA Toolkit 12.x and cuDNN 9 for CUDA 12.x.
+Для ускорения на NVIDIA GPU в документации проекта рекомендуется использовать актуальный драйвер NVIDIA, CUDA Toolkit 12.x и cuDNN 9 для CUDA 12.x.
 
-## Installation
+## Установка
 
 ```powershell
 py -m venv .venv
@@ -61,110 +61,110 @@ py -m pip install --upgrade pip setuptools wheel
 py -m pip install -r requirements.txt
 ```
 
-## Run
+## Запуск
 
 ```powershell
 py voiceflow.py
 ```
 
-If the global hotkey or text insertion does not work in a specific elevated application, try running VoiceFlow with the same privilege level (for example, as Administrator).
+Если глобальная горячая клавиша или вставка текста не работает в приложении, запущенном с повышенными правами, попробуйте запустить VoiceFlow с тем же уровнем прав, например от имени администратора.
 
-## Main dependencies
+## Основные зависимости
 
-- `numpy` — audio/data processing.
-- `sounddevice` — microphone recording.
-- `faster-whisper` — local speech recognition.
-- `pyperclip` — clipboard operations.
-- `pyautogui` — fallback keyboard actions and voice commands.
-- `keyboard` — hotkey support in some modes.
-- `language-tool-python` — optional stronger grammar cleanup.
-- `pystray` — system tray integration.
-- `Pillow` — tray icon rendering.
+- `numpy` — обработка аудио и данных.
+- `sounddevice` — запись с микрофона.
+- `faster-whisper` — локальное распознавание речи.
+- `pyperclip` — работа с буфером обмена.
+- `pyautogui` — резервные клавиатурные действия и голосовые команды.
+- `keyboard` — поддержка горячих клавиш в некоторых режимах.
+- `language-tool-python` — опциональная расширенная коррекция грамматики.
+- `pystray` — интеграция с системным треем.
+- `Pillow` — отрисовка иконки в трее.
 
-## Recommended settings
+## Рекомендуемые настройки
 
-The bundled documentation suggests these starting points:
+Документация проекта предлагает следующие стартовые варианты.
 
 ### NVIDIA GPU
 
-- Device: `cuda`
-- Compute: `int8_float16`
-- Model: `medium` or `large-v3`
-- Language: `ru` for Russian dictation
-- Realtime profile: Balanced or Quality
-- Fragment interval: about 4–6 seconds for higher quality
+- Устройство: `cuda`
+- Тип вычислений: `int8_float16`
+- Модель: `medium` или `large-v3`
+- Язык: `ru` для русской диктовки
+- Профиль реального времени: Balanced или Quality
+- Интервал фрагментов: примерно 4–6 секунд для более высокого качества
 
 ### CPU
 
-- Device: `cpu`
-- Compute: `int8`
-- Model: `small` or `base`
-- Realtime profile: Balanced or Faster
+- Устройство: `cpu`
+- Тип вычислений: `int8`
+- Модель: `small` или `base`
+- Профиль реального времени: Balanced или Faster
 
-## Voice commands
+## Голосовые команды
 
-VoiceFlow includes commands for common dictation and editing actions, including:
+VoiceFlow поддерживает команды для распространённых действий при диктовке и редактировании, включая:
 
-- punctuation: period, comma, question mark, exclamation mark;
-- new line and new paragraph;
-- space and tab;
-- Backspace / delete word;
-- undo, select all, copy, paste and save;
-- cursor movement and line navigation;
-- line/field clearing actions.
+- знаки препинания: точка, запятая, вопросительный знак, восклицательный знак;
+- новую строку и новый абзац;
+- пробел и Tab;
+- Backspace и удаление слова;
+- отмену действия, выделение всего, копирование, вставку и сохранение;
+- перемещение курсора и навигацию по строкам;
+- очистку строки или поля ввода.
 
-The full Russian-language usage notes are stored in the `docs/` directory.
+Полная русскоязычная документация по использованию находится в каталоге `docs/`.
 
-## Diagnostics
+## Диагностика
 
-VoiceFlow creates a separate log directory for each launch:
+VoiceFlow создаёт отдельный каталог логов для каждого запуска:
 
 ```text
 voiceflow_logs/run_YYYY-MM-DD_HH-MM-SS_PID/
 ```
 
-A convenient copy/pointer for the latest run is kept under:
+Удобная копия или указатель на последний запуск хранится здесь:
 
 ```text
 voiceflow_logs/_last_run/
 ```
 
-The diagnostics include separate logs for areas such as:
+Диагностика включает отдельные логи для таких областей, как:
 
-- hotkeys and detailed hotkey traces;
-- recording state;
-- notifications;
-- realtime streaming;
-- worker queues;
-- text insertion;
-- crashes and general diagnostics.
+- горячие клавиши и подробная трассировка их работы;
+- состояние записи;
+- уведомления;
+- потоковое распознавание в реальном времени;
+- очереди рабочих задач;
+- вставка текста;
+- сбои и общая диагностика.
 
-These runtime logs and local settings are excluded from Git by `.gitignore`.
+Эти логи выполнения и локальные настройки исключены из Git через `.gitignore`.
 
-## Local settings
+## Локальные настройки
 
-Settings are stored in:
+Настройки сохраняются в:
 
 ```text
 voiceflow_settings/settings.json
 ```
 
-They are intentionally excluded from the repository because they are user-specific runtime data.
+Они намеренно исключены из репозитория, поскольку относятся к пользовательским данным конкретной установки.
 
-## Verification
+## Проверка проекта
 
-The repository includes a Windows GitHub Actions workflow that compiles the main source file on every push and pull request:
+В репозитории есть workflow GitHub Actions для Windows, который при каждом push и pull request проверяет компиляцию основного исходного файла:
 
 ```powershell
 python -m py_compile voiceflow.py
 ```
 
-The CI check is intentionally lightweight and does not download Whisper models, access a microphone or initialize CUDA. Audio devices, GPU execution, hotkeys and realtime insertion still require real Windows testing.
+CI-проверка специально сделана лёгкой: она не загружает модели Whisper, не обращается к микрофону и не инициализирует CUDA. Аудиоустройства, работа на GPU, глобальные горячие клавиши и вставка текста в реальном времени всё равно требуют проверки на реальной системе Windows.
 
-## Documentation
+## Документация
 
-The repository includes the original Russian documentation from the application archive under `docs/`, including quick start, model warm-up, CUDA/cuDNN setup, voice commands, punctuation, logging and microphone troubleshooting.
+В каталоге `docs/` находится оригинальная русскоязычная документация из архива приложения, включая быстрый старт, предварительную загрузку модели, настройку CUDA/cuDNN, голосовые команды, пунктуацию, логирование и устранение проблем с микрофоном.
 
-## License
+## Лицензия
 
-No open-source license is currently granted. The source code is published for portfolio and code-review purposes.
+В настоящее время проект не распространяется по лицензии с открытым исходным кодом. Исходный код опубликован для портфолио и ревью кода.
