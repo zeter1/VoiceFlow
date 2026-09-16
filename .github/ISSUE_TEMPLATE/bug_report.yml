@@ -1,0 +1,84 @@
+name: Сообщить об ошибке
+description: Сообщение о проблеме VoiceFlow
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо за сообщение. Для VoiceFlow особенно важны режим CPU/CUDA, модель Whisper, микрофон и точный сценарий воспроизведения.
+        Перед публикацией диагностических файлов проверьте, что в них нет текста диктовки или других данных, которыми вы не хотите делиться.
+
+  - type: input
+    id: app_version
+    attributes:
+      label: Версия/ревизия VoiceFlow
+    validations:
+      required: true
+
+  - type: input
+    id: windows_version
+    attributes:
+      label: Windows
+      placeholder: "например: Windows 11 24H2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: compute_device
+    attributes:
+      label: Режим вычислений
+      options:
+        - CPU
+        - NVIDIA CUDA
+        - Не уверен
+    validations:
+      required: true
+
+  - type: input
+    id: whisper_model
+    attributes:
+      label: Модель Whisper и compute type
+      placeholder: "например: medium / int8_float16"
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Что произошло
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как воспроизвести
+      placeholder: |
+        1. Запустить VoiceFlow
+        2. Выбрать ...
+        3. Нажать F9
+        4. Сказать ...
+        5. Получить ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемое поведение
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Диагностика
+      description: Приложите релевантные файлы из последней диагностической сессии или небольшой фрагмент. Удалите личный текст диктовки, если он присутствует.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Проверки
+      options:
+        - label: Я проверил проблему на текущей версии проекта.
+          required: true
+        - label: Я проверил приложенные логи на наличие личного текста и данных.
+          required: true
