@@ -166,16 +166,26 @@ voiceflow_settings/settings.json
 ## Проверка проекта
 
 ```powershell
-python -m py_compile voiceflow.py
+python -m compileall -q voiceflow.py tests
+python -m unittest discover -s tests -v
 ```
 
-GitHub Actions выполняет лёгкую проверку без загрузки Whisper-моделей, доступа к микрофону и инициализации CUDA.
+CI выполняет syntax/compile и offline repository-contract regression tests без загрузки Whisper-моделей, доступа к микрофону и инициализации CUDA.
 
-## Документация
+## Ограничения и уровень проверки
+
+- качество и задержка распознавания зависят от модели, CPU/GPU и аудиоустройства;
+- CUDA path требует совместимой локальной NVIDIA/CUDA/cuDNN-конфигурации;
+- вставка текста и глобальные hotkeys зависят от поведения конкретного Windows-приложения;
+- CI не подтверждает работу реального микрофона, CUDA, tray, hotkeys и вставки в сторонние приложения — эти сценарии требуют runtime-проверки в Windows;
+- основной `voiceflow.py` остаётся крупным legacy-модулем; дальнейшая безопасная декомпозиция является отдельной задачей и не маскируется документацией.
+
+## Документация и поддержка
 
 - [Архитектура VoiceFlow](docs/ARCHITECTURE.md)
-- Дополнительные инструкции по CUDA/cuDNN, голосовым командам, моделям, микрофону и диагностике находятся в каталоге [`docs/`](docs/)
+- дополнительные инструкции по CUDA/cuDNN, голосовым командам, моделям, микрофону и диагностике находятся в каталоге [`docs/`](docs/)
 - [Security and privacy](SECURITY.md)
+- [Поддержка и диагностика](SUPPORT.md)
 
 ## Лицензия
 
