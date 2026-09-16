@@ -73,6 +73,30 @@ py voiceflow.py
 
 Программа специально не вставляет весь текст повторно после остановки, чтобы не дублировать уже отправленные фрагменты.
 
+## Архитектура
+
+Основной поток данных:
+
+```text
+microphone
+   ↓
+audio capture
+   ↓
+realtime buffering / worker queue
+   ↓
+faster-whisper inference
+   ↓
+stability + deduplication
+   ↓
+voice commands / cleanup
+   ↓
+Windows text insertion
+   ↓
+active application
+```
+
+Подробно границы подсистем, lifecycle диктовки, CPU/CUDA paths, deduplication и insertion layer описаны в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
 ## Конфиденциальность
 
 После загрузки модели Whisper:
@@ -81,6 +105,8 @@ py voiceflow.py
 - API-ключ OpenAI не требуется;
 - записанное аудио не отправляется в OpenAI API;
 - рабочие настройки и логи остаются на компьютере пользователя.
+
+Перед публикацией диагностических файлов рекомендуется проверить, что они не содержат личный текст диктовки или другие пользовательские данные. Дополнительные рекомендации: [`SECURITY.md`](SECURITY.md).
 
 ## Рекомендуемые настройки
 
@@ -147,7 +173,9 @@ GitHub Actions выполняет лёгкую проверку без загр�
 
 ## Документация
 
-Дополнительные инструкции по CUDA/cuDNN, голосовым командам, моделям, микрофону и диагностике находятся в каталоге `docs/`.
+- [Архитектура VoiceFlow](docs/ARCHITECTURE.md)
+- Дополнительные инструкции по CUDA/cuDNN, голосовым командам, моделям, микрофону и диагностике находятся в каталоге [`docs/`](docs/)
+- [Security and privacy](SECURITY.md)
 
 ## Лицензия
 
