@@ -40,3 +40,46 @@ jobs:
       - name: Run offline repository contract tests
         shell: pwsh
         run: python -m unittest discover -s tests -v
+
+      - name: Install packaging dependencies
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[package]'))
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install "pyinstaller==6.22.3"
+          python -m pip check
+
+      - name: Build packaged Windows application
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[package]'))
+        shell: pwsh
+        run: |
+          $args = @(
+            '--noconfirm','--clean','--onedir','--windowed','--name','VoiceFlow',
+            '--collect-all','faster_whisper',
+            '--collect-all','ctranslate2',
+            '--collect-all','av',
+            '--collect-all','huggingface_hub',
+            '--hidden-import','pystray._win32',
+            'voiceflow.py'
+          )
+          python -m PyInstaller @args
+
+      - name: Smoke-test packaged EXE
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[package]'))
+        shell: pwsh
+        run: |
+          $exe = 'dist\VoiceFlow\VoiceFlow.exe'
+          if (-not (Test-Path $exe)) { throw 'VoiceFlow.exe was not created' }
+          & $exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged self-test failed with exit code $LASTEXITCODE" }
+          Get-Item $exe | Format-List Name,Length,LastWriteTime
+
+      - name: Upload packaged Windows distribution
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[package]'))
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: VoiceFlow-Windows-x64
+          path: dist/VoiceFlow/
+          if-no-files-found: error
+          retention-days: 30

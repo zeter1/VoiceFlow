@@ -6076,7 +6076,39 @@ class VoiceFlowOfflineApp:
         self.on_close()
 
 
+
+def run_self_test() -> int:
+    """Lightweight packaged-runtime check without opening the GUI or microphone."""
+    checks = {
+        "numpy": np is not None,
+        "sounddevice": sd is not None,
+        "faster_whisper": WhisperModel is not None,
+        "pyperclip": pyperclip is not None,
+        "pyautogui": pyautogui is not None,
+        "keyboard": keyboard is not None,
+        "pystray": pystray is not None,
+        "pillow": Image is not None and ImageDraw is not None,
+    }
+    try:
+        import language_tool_python  # type: ignore  # noqa: F401
+        checks["language_tool_python"] = True
+    except Exception:
+        checks["language_tool_python"] = False
+
+    payload = {
+        "app": APP_NAME,
+        "frozen": bool(getattr(sys, "frozen", False)),
+        "executable": sys.executable,
+        "app_dir": str(APP_DIR),
+        "checks": checks,
+    }
+    print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    return 0 if all(checks.values()) else 1
+
 def main() -> None:
+    if "--self-test" in sys.argv[1:]:
+        raise SystemExit(run_self_test())
+
     install_exception_logging()
     if not acquire_single_instance_lock():
         try:
