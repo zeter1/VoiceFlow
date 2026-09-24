@@ -72,8 +72,8 @@ jobs:
         run: |
           $exe = 'dist\VoiceFlow\VoiceFlow.exe'
           if (-not (Test-Path $exe)) { throw 'VoiceFlow.exe was not created' }
-          & $exe --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Packaged self-test failed with exit code $LASTEXITCODE" }
+          $process = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Packaged self-test failed with exit code $($process.ExitCode)" }
           Get-Item $exe | Format-List Name,Length,LastWriteTime
 
       - name: Upload packaged Windows distribution
