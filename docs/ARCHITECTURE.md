@@ -4,7 +4,7 @@ VoiceFlow физически разделён по ответственност�
 
 ## Dependency map
 
-voiceflow.py -> voiceflow_app.entrypoint -> app/main_window.py -> app mixins -> focused owners (core/config/diagnostics/dependencies/hotkey_config/settings/voice_commands/windows/services/ui).
+voiceflow.py -> voiceflow_app.entrypoint -> composition.py -> app/main_window.py -> app/session_controller.py + app mixins -> focused owners (core/config/diagnostics/dependencies/hotkey_config/settings/voice_commands/windows/services/ui).
 
 voiceflow.py является только launcher и не должен снова накапливать бизнес-логику.
 
@@ -53,7 +53,11 @@ ui/notifications.py и ui/tray.py отвечают только за presentatio
 
 ## Application composition
 
-app/main_window.py собирает VoiceFlowOfflineApp.
+composition.py является единственной default composition boundary: здесь лениво создаются AudioRecorder, LocalTranscriber, LocalTextCleaner и factories notification/tray. VoiceFlowOfflineApp принимает injected ApplicationServices и не создаёт concrete services самостоятельно.
+
+app/session_controller.py — headless owner session_id, capture lifecycle, committed realtime text и frames→WAV→transcription service orchestration. Он зависит от Protocol contracts, а не от Tk/UI.
+
+app/main_window.py собирает Tk-shell VoiceFlowOfflineApp вокруг injected services.
 app/ui.py — widgets/state/notifications.
 app/controls.py — microphone/hotkey editor.
 app/hotkeys.py — Windows polling/dispatch; edge/debounce decisions делегируются core/hotkey_state.py.
@@ -63,11 +67,11 @@ app/actions.py — copy/paste, settings, window lifecycle and shutdown.
 
 ## Runtime data flow
 
-AudioRecorder -> frames -> StreamingMixin worker -> LocalTranscriber -> stable fragment filters -> optional LocalTextCleaner/voice command -> ActionsMixin insertion -> active Windows target.
+ApplicationServices -> HeadlessSessionController/AudioRecorder -> frames -> StreamingMixin worker -> LocalTranscriber -> stable fragment filters -> optional LocalTextCleaner/voice command -> HeadlessSessionController committed state -> ActionsMixin insertion -> active Windows target.
 
 ## State/thread invariants
 
-Conceptual state: idle -> starting -> recording -> stopping/finalizing -> idle.
+Conceptual session state in HeadlessSessionController: idle -> starting -> recording -> finalizing -> idle.
 Hotkey only initiates transitions; heavy work stays out of callback.
 Tk updates occur through Tk/main-thread scheduling.
 Realtime confirmed fragments are inserted while recording; stop must not reinsert the complete transcript.
@@ -94,7 +98,7 @@ Internal modules must not import runtime.py; import the focused owner directly.
 Prefer pure/testable helpers for parsing/dedupe/state decisions.
 Before cross-module state changes identify owner, invariant, failure semantics and verification route.
 
-See also: ../AGENTS.md, AI_CONTEXT.md, IMPORT_BOUNDARIES.md, SERVICE_CONTRACTS.md, DEVELOPMENT.md, ../SECURITY.md.
+See also: ../AGENTS.md, AI_CONTEXT.md, IMPORT_BOUNDARIES.md, SERVICE_CONTRACTS.md, APPLICATION_SESSION.md, DEVELOPMENT.md, ../SECURITY.md.
 
 ## Compatibility boundary
 
@@ -111,3 +115,11 @@ runtime.py не имеет внутренних consumers и сохраняет�
 `cuda_runtime.py` владеет environment probing и child-process CUDA preflight. `LocalTranscriber` получает `backend_runtime` и `model_factory` через constructor seams; это позволяет тестировать backend policy независимо от GPU/faster-whisper model load.
 
 Windows startup registry и text insertion разделены физически, чтобы изменения автозапуска не затрагивали HWND/focus/paste code и наоборот.
+
+## Architecture 2.4 application ports
+
+UI adapters are injected through `app/ports.py`; desktop implementations remain `ui/notifications.py` and `ui/tray.py`.
+
+The headless controller deliberately does not own Tk status/button/timer state. Tk mixins translate controller/service outcomes into UI. This prevents a second GUI-free controller from silently becoming another UI state source.
+
+Stop ordering is an explicit compatibility invariant: recorder stop keeps frames → realtime worker gets stop signal → buffered frames are discarded. Do not reorder this without a regression test and runtime evidence.

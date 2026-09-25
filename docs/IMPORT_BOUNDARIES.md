@@ -24,7 +24,10 @@
 | deterministic realtime/recording/hotkey decisions | `core/*` |
 | microphone/model/text-cleaning behavior | `services/*` |
 | tray/toast presentation | `ui/*` |
-| application/session orchestration | `app/*` |
+| default concrete construction | `composition.py` |
+| headless session identity/capture/committed text | `app/session_controller.py` |
+| notification/tray application ports | `app/ports.py` |
+| Tk/application orchestration | remaining `app/*` |
 
 ## Dependency direction
 
@@ -42,7 +45,10 @@
 - `windows.py` → re-export only.
 - `services/*` → focused owners выше; не app/ui/runtime.
 - `ui/*` → config/dependencies/diagnostics/windows по необходимости; UI infrastructure не владеет recording truth.
-- `app/*` → core + owner modules + services/ui. Mutable session state остаётся у `VoiceFlowOfflineApp`.
+- `composition.py` → service contracts + lazy concrete service/UI imports inside the builder only.
+- `app/session_controller.py` → service contracts + stdlib only; no Tk/desktop adapters.
+- `app/ports.py` → stdlib Protocols only.
+- other `app/*` → core + owner modules + services/ui/application ports. Tk state остаётся у `VoiceFlowOfflineApp`; session identity/committed text — у controller.
 - `entrypoint.py` → startup owners + lazy app import.
 - `runtime.py` → package re-exports only. Ни функций, ни классов, ни mutable state внутри facade.
 
@@ -50,9 +56,9 @@
 
 Hotkey parsing/VK → `hotkey_config.py`; physical press state → `core/hotkey_state.py`; dispatch/polling → `app/hotkeys.py`.
 
-Recording state decision → `core/recording_state.py`; microphone side effects → `services/audio.py`; lifecycle orchestration → `app/recording.py`.
+Recording state decision → `core/recording_state.py`; headless session transition/service coordination → `app/session_controller.py`; microphone side effects → `services/audio.py`; Tk lifecycle orchestration → `app/recording.py`.
 
-Realtime text decision → `core/realtime.py`; inference → `services/transcription.py`; worker/session flow → `app/streaming.py`.
+Realtime text decision → `core/realtime.py`; committed session text → `app/session_controller.py`; inference → `services/transcription.py`; worker/UI/insertion flow → `app/streaming.py`.
 
 Paste target/native Ctrl+V → `windows_insertion.py`; startup registry → `windows_startup.py`; user action/clipboard flow → `app/actions.py`.
 
@@ -73,3 +79,9 @@ Persisted schema/store → `settings.py`; widgets/editing controls → `app/ui.p
 ## Service contracts
 
 `services/contracts.py` is the behavioral port map for AudioRecorder, LocalTranscriber and LocalTextCleaner. Adapters such as `audio_devices.py` and `cuda_runtime.py` must remain independently testable with fakes. See SERVICE_CONTRACTS.md for expected call surfaces and test strategy.
+
+## Composition guard
+
+Concrete recorder/transcriber/cleaner/notification/tray construction belongs in `composition.py`. Keep those imports lazy so `ApplicationServices` and session tests remain importable before optional/package dependencies are installed.
+
+Do not move Tk widgets into `session_controller.py`. Do not duplicate `session_id` or committed-text ownership back into mixins.

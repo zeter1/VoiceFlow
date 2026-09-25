@@ -9,6 +9,7 @@
 - [DEVELOPMENT.md](DEVELOPMENT.md) — команды разработки, verification ladder и release discipline.
 - [IMPORT_BOUNDARIES.md](IMPORT_BOUNDARIES.md) — canonical owners, dependency directions и запреты на facade/wildcard coupling.
 - [SERVICE_CONTRACTS.md](SERVICE_CONTRACTS.md) — service ports, adapters, injection seams и offline testing.
+- [APPLICATION_SESSION.md](APPLICATION_SESSION.md) — composition root, session state ownership, headless lifecycle/race tests.
 - [../AGENTS.md](../AGENTS.md) — стабильные repo-инварианты и правила AI coding agents.
 
 ## Пользовательское обучение

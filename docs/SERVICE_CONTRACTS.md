@@ -72,3 +72,29 @@ Windows insertion: Chrome/Firefox/Telegram/editor, смена активного
 Startup: enable/disable HKCU Run, frozen EXE command и source/pythonw command.
 
 Без этих runtime checks claims помечать NOT VERIFIED.
+
+## Application composition
+
+`composition.py::ApplicationServices` groups the three service contracts plus notification/tray factories. The default builder imports concrete implementations lazily; tests may supply fakes directly.
+
+`VoiceFlowOfflineApp(root, services=...)` is the injection point. If a new external service is needed, add a narrow port/contract and wire the default implementation in composition rather than constructing it in a mixin.
+
+## HeadlessSessionController
+
+Owner: `app/session_controller.py`.
+
+Responsibilities:
+- monotonically increasing session identity;
+- idle/starting/recording/finalizing transition guard;
+- recorder start/stop/recovery coordination;
+- committed realtime text / inserted_any ownership;
+- frames → WAV → TranscriberContract → optional TextCleanerContract pipeline.
+
+Non-responsibilities:
+- Tk status/buttons/timers;
+- hotkey polling;
+- notification rendering;
+- actual paste target / Ctrl+V;
+- pure dedupe/punctuation policy (that stays in `core/realtime.py`).
+
+Offline proof: `tests/test_session_controller.py` covers start→frames→transcription→commit→stop, double-start rejection, stop/restart, failed-start recovery, failed-stop recovery, finalizing race and deferred frame discard.

@@ -8,6 +8,7 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 
 ## Физическая карта
 
+- composition.py: injectable ApplicationServices/default composition root; concrete desktop service construction belongs here.
 - runtime.py: external compatibility facade only; internal modules must not import it.
 - config.py: paths and runtime constants.
 - diagnostics.py: logs, diagnostics and exception hooks.
@@ -27,6 +28,8 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 - services/transcription.py: model lifecycle and inference; backend environment is injected.
 - services/text_cleaner.py: punctuation/fillers/grammar/formatting.
 - services/contracts.py: Protocol contracts for the three service boundaries.
+- app/ports.py: Notification/Tray Protocol ports.
+- app/session_controller.py: headless session lifecycle, session_id, committed realtime text and service pipeline.
 - app/ui.py: Tk interface.
 - app/controls.py: microphone/hotkey controls.
 - app/hotkeys.py: registration/polling/debounce/dispatch.
@@ -38,7 +41,7 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 
 ## State owners
 
-VoiceFlowOfflineApp owns GUI/session orchestration. SettingsStore owns persistence. AudioRecorder owns capture stream/frames. LocalTranscriber owns model/inference state. Notification/tray managers do not own recording truth.
+VoiceFlowOfflineApp owns Tk/UI orchestration. HeadlessSessionController owns session identity, capture lifecycle and committed realtime text. SettingsStore owns persistence. AudioRecorder owns capture stream/frames. LocalTranscriber owns model/inference state. Notification/tray managers do not own recording truth.
 
 When adding a persisted setting: AppSettings -> RuntimeSettings if worker needs it -> load/save/UI -> docs -> regression contract where possible.
 
@@ -48,7 +51,7 @@ Tk main thread handles widgets. Capture/inference use background execution. Work
 
 ## Realtime contract
 
-Confirmed fragments are inserted during recording. app/streaming.py tracks committed text, rejects bad/duplicate chunks and handles sentence tails. Stop must release session state without pasting the full transcript again.
+Confirmed fragments are inserted during recording. `core/realtime.py` owns pure text decisions, `HeadlessSessionController` owns committed-text/session state, and `app/streaming.py` owns worker/UI/insertion orchestration. Stop must release session state without pasting the full transcript again.
 
 ## Hotkey diagnostics
 
@@ -97,3 +100,9 @@ Architecture 2.2 rule: every internal module uses explicit owner imports; contex
 ## Service/adapters rule
 
 Hardware/environment knowledge must stop at adapter boundaries. `LocalTranscriber` may ask a backend-runtime port for candidate/preflight results, but it must not call `find_windows_dll` or `subprocess.run` itself. `app/controls.py` asks `audio_devices.py` for microphones; `dependencies.py` must not own enumeration. See [SERVICE_CONTRACTS.md](SERVICE_CONTRACTS.md).
+
+## Headless session route
+
+Для start/stop race, repeated start, finalizing, recovery или committed-text regressions сначала открой [APPLICATION_SESSION.md](APPLICATION_SESSION.md) и `app/session_controller.py`. Не начинай с Tk widgets.
+
+Для testable full path без GUI используй injected fakes: recorder → frames_to_wav → transcriber → cleaner → record_commit → stop. Production composition создаётся только в `composition.py`.
