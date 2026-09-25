@@ -37,7 +37,8 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 - app/hotkeys.py: registration/polling/debounce/dispatch.
 - app/recording.py: recording state transitions and warm-up.
 - app/realtime_worker.py: headless frame cursor, transcription context, chunk processing, WAV cleanup and typed message production.
-- app/streaming.py: thin realtime application adapter plus text shaping/insertion/voice-command helpers.
+- app/realtime_text_pipeline.py: headless recognized-text → display/command/insertion planning, including exact paste payload.
+- app/streaming.py: thin realtime application adapter plus actual Tk rendering/paste/voice-command side effects.
 - app/worker_dispatch.py: main-thread typed queue decode, stale-session/after-stop filtering and UI/application routing.
 - worker_messages.py: message kinds/payloads, legacy coercion seam and pure session-result gates.
 - app/actions.py: copy/paste/settings/shutdown.
@@ -56,7 +57,7 @@ Tk main thread handles widgets. Capture/inference use background execution. Work
 
 ## Realtime contract
 
-Confirmed fragments are inserted during recording. `services/audio_analysis.py` owns audio evidence, `core/realtime_policy.py` owns commit/cancel policy, `core/realtime.py` owns pure text decisions, `HeadlessSessionController` owns session identity/transcription service coordination/committed inserted text, `RealtimeWorkerEngine` owns the background frame/transcription loop, `app/streaming.py` adapts settings and owns insertion-side text helpers, and `app/worker_dispatch.py` owns main-thread message application. Stop must release session state without pasting the full transcript again.
+Confirmed fragments are inserted during recording. `services/audio_analysis.py` owns audio evidence, `core/realtime_policy.py` owns commit/cancel policy, `core/realtime.py` owns primitive pure text algorithms, `HeadlessSessionController` owns session identity/transcription service coordination/committed inserted text, `RealtimeWorkerEngine` owns the background frame/transcription loop, `RealtimeTextPipeline` owns recognized-text cleanup/command/dedupe/punctuation/exact insertion planning, `app/worker_dispatch.py` applies the plan on the main thread, and `app/streaming.py` performs the actual UI/paste/voice-command side effects. Stop must release session state without pasting the full transcript again.
 
 ## Hotkey diagnostics
 
@@ -116,7 +117,7 @@ Hardware/environment knowledge must stop at adapter boundaries. `LocalTranscribe
 
 Пауза/шум/слишком ранний или поздний commit → `services/audio_analysis.py` + `core/realtime_policy.py` + `streaming.jsonl`.
 
-Повтор/хвост/пунктуация → `core/realtime.py`.
+Повтор/хвост/пунктуация primitives → `core/realtime.py`; full worker-result → exact insertion decision → `app/realtime_text_pipeline.py`.
 
 Результат старой session, поздний message после stop, queue payload → `worker_messages.py` + `app/worker_dispatch.py` + `worker_queue.jsonl`.
 
@@ -130,3 +131,11 @@ Thread creation/stop/finalizer adapter → `app/streaming.py`.
 Если после одной transcription error поток перестал печатать: сначала `tests/test_realtime_worker.py` и `app/realtime_worker.py`. Проверяй cursor semantics: noise/filtered chunk должен advance, transcription exception — оставить cursor для retry и отправить исходный `StreamWarningPayload`.
 
 Если ошибка говорит про cleanup/WAV после другой ошибки, проверь `wav_path: Optional[Path] = None` и cleanup only-after-successful-path assignment. Не маскируй исходную transcription exception broad suppression.
+
+## Realtime text-commit debugging route
+
+Неправильная точка/регистр/лишний повтор/вставляется raw вместо cleaned → сначала `tests/test_realtime_text_pipeline.py` + `app/realtime_text_pipeline.py`.
+
+Voice command попал в обычный текст или текст перед командой потерялся → `plan_stream_result()` + `voice_commands.py`.
+
+Pause metadata видно в worker payload, но вставленная пунктуация неверна → проверь, что `worker_dispatch.py` передаёт `commit_meta` без потерь. Полная карта: [REALTIME_TEXT_COMMIT.md](REALTIME_TEXT_COMMIT.md).

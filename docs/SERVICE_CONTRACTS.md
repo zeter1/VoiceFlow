@@ -114,3 +114,9 @@ Owner: `app/realtime_worker.py` as a narrow internal Protocol. Production implem
 Purpose: let the worker engine orchestrate frames → WAV → transcription without depending on Tk/application shell or concrete Whisper implementation.
 
 The worker still receives `AudioRecorderContract`; microphone implementation details stay in `services/audio.py`. Tests can supply recorder/session fakes plus deterministic audio stats without importing or initializing hardware.
+
+## TextCleanerContract consumer in realtime
+
+`RealtimeTextPipeline` is the realtime consumer of `TextCleanerContract`. It calls cleaner with `deep_grammar=False` for low-latency streaming chunks, then applies the pure bad-text/open-sentence rules before returning worker-cleanup output.
+
+The pipeline depends on the service contract, not on `LocalTextCleaner` directly, so fake cleaners can prove exact cleanup/insertion behavior offline.

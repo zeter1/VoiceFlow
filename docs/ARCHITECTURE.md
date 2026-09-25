@@ -159,3 +159,20 @@ Cursor semantics являются contract:
 Temporary WAV cleanup выполняется только если `SessionTranscript` действительно вернул path; exception до этого не может быть заменена cleanup error.
 
 Primary proof: `tests/test_realtime_worker.py`.
+
+## Architecture 2.7 text commit/insertion plan
+
+После typed worker queue появился отдельный headless decision layer: `app/realtime_text_pipeline.py`.
+
+Он принимает `raw + cleaned + previous_inserted_text + origin + stream_mode + insert_edited_text + commit_meta` и возвращает `RealtimeResultPlan`:
+- command-stripped display raw/cleaned text;
+- optional voice command and whether it may execute in this mode;
+- optional `RealtimeInsertionPlan` with exact text and exact paste payload;
+- `PasteChunkDecision` evidence for logging/review.
+
+Это отделяет decision от side effect. `worker_dispatch.py` строит plan; `streaming.py` только отображает planned text, вызывает paste и выполняет planned command.
+
+Critical metadata path:
+`StreamResultPayload.commit_meta → WorkerDispatchMixin → RealtimeTextPipeline.plan_stream_result() → prepare_stream_chunk_for_paste()`.
+
+Если этот путь разорван, realtime может распознать правильную паузу, но вставить текст с неправильной пунктуацией. Architecture 2.7 добавляет regression proof именно для этого пути.

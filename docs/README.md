@@ -11,6 +11,7 @@
 - [SERVICE_CONTRACTS.md](SERVICE_CONTRACTS.md) — service ports, adapters, injection seams и offline testing.
 - [APPLICATION_SESSION.md](APPLICATION_SESSION.md) — composition root, session state ownership, headless lifecycle/race tests.
 - [REALTIME_PIPELINE.md](REALTIME_PIPELINE.md) — headless RealtimeWorkerEngine, audio/commit policy, frame-cursor recovery, typed queue and stale-session/cancellation contracts.
+- [REALTIME_TEXT_COMMIT.md](REALTIME_TEXT_COMMIT.md) — cleanup/dedupe/voice-command/punctuation planning and exact paste-payload boundary.
 - [../AGENTS.md](../AGENTS.md) — стабильные repo-инварианты и правила AI coding agents.
 
 ## Пользовательское обучение

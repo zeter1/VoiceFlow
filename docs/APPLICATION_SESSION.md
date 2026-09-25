@@ -100,3 +100,14 @@ The distinction is intentional:
 - worker dispatch = main-thread acceptance/application of typed results.
 
 A worker retry must never increment session id. A new recording session is still created only by `HeadlessSessionController.begin_capture()/start_capture()`.
+
+## Inserted-text ownership vs insertion planning
+
+`HeadlessSessionController.committed_text` remains authoritative for text that was actually pasted successfully. `RealtimeTextPipeline` does **not** mutate session state; it only plans what should be inserted.
+
+The order is:
+1. plan exact insertion text;
+2. perform external paste side effect;
+3. only on successful paste call `session_controller.record_commit(plan.insertion.text)`.
+
+This prevents planned-but-failed paste attempts from contaminating dedupe state.

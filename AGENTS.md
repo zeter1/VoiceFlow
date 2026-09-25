@@ -43,7 +43,8 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - app/hotkeys.py — global hotkey polling/dispatch.
 - app/recording.py — start/stop/warm-up.
 - app/realtime_worker.py — headless frame cursor/transcription-context/chunk lifecycle/message producer engine.
-- app/streaming.py — application adapter plus realtime text shaping/insertion helpers; no frame loop or main-thread dispatch.
+- app/realtime_text_pipeline.py — headless cleanup/dedupe/voice-command split/punctuation/exact insertion-plan owner.
+- app/streaming.py — application adapter plus actual Tk text rendering/paste/voice-command side effects; no frame loop or text-policy ownership.
 - app/worker_dispatch.py — typed worker queue decoding, stale-session gates and main-thread UI/application routing.
 - worker_messages.py — typed queue message kinds/payloads and pure session-result gates.
 - app/actions.py — copy/paste/settings/window lifecycle/shutdown.
@@ -56,6 +57,7 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - docs/IMPORT_BOUNDARIES.md — canonical import owners and dependency directions.
 - docs/SERVICE_CONTRACTS.md — service ports, adapters, injection seams and offline-test strategy.
 - docs/REALTIME_PIPELINE.md — realtime audio→policy→worker-message→dispatch ownership and race contracts.
+- docs/REALTIME_TEXT_COMMIT.md — worker payload→text plan→exact paste payload→side-effect boundary.
 
 ## Critical invariants
 
@@ -75,12 +77,12 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 
 Microphone capture -> services/audio.py + app/session_controller.py + app/recording.py. Microphone enumeration -> audio_devices.py + app/controls.py.
 Whisper/model -> services/transcription.py + app/realtime_worker.py; app/streaming.py only selects runtime model/quality and adapts UI settings. CUDA/DLL/preflight -> cuda_runtime.py.
-Duplicates/missing realtime text -> core/realtime.py + app/session_controller.py committed state + app/streaming.py.
+Duplicates/missing realtime text -> core/realtime.py + app/realtime_text_pipeline.py + app/session_controller.py committed state.
 Pause/noise/forced-commit behavior -> services/audio_analysis.py + core/realtime_policy.py + app/realtime_worker.py.
 Frame cursor/transcription retry/context reset/WAV cleanup -> app/realtime_worker.py + tests/test_realtime_worker.py.
 Stale worker result / queue race -> worker_messages.py + app/worker_dispatch.py + worker_queue.jsonl.
-Punctuation/cleanup -> services/text_cleaner.py.
-Voice commands -> voice_commands.py parsing + app/streaming.py execution.
+Punctuation/cleanup policy -> services/text_cleaner.py + app/realtime_text_pipeline.py. Exact paste payload / raw-vs-cleaned / trailing command split -> app/realtime_text_pipeline.py.
+Voice commands -> voice_commands.py parsing + app/realtime_text_pipeline.py split/plan + app/streaming.py execution.
 Hotkey starts once/double fires -> app/hotkeys.py + hotkey_trace.jsonl.
 Wrong-window/paste failure -> windows_insertion.py + app/actions.py + insertion.jsonl.
 Tray/notification -> ui/*.
@@ -146,3 +148,11 @@ Before changing pause/noise/cancellation/session-result behavior, read `docs/REA
 Failure invariant: if transcription throws before returning a `SessionTranscript`, cleanup must not mask the original exception. The worker intentionally keeps the frame cursor on the previous index for a transcription failure so the next iteration can retry overlapping audio; filtered/noise chunks advance the cursor so one bad chunk cannot freeze dictation.
 
 Before worker-loop changes, read `docs/REALTIME_PIPELINE.md` and run `tests/test_realtime_worker.py` together with realtime policy/message/session tests.
+
+## Architecture 2.7 realtime text-commit boundary
+
+`app/realtime_text_pipeline.py::RealtimeTextPipeline` is the single headless owner between recognized text and application side effects. It owns cleanup, command stripping, inserted-text dedupe, pause/Whisper punctuation-at-commit, raw-vs-cleaned selection, exact paste payload and final-tail decision.
+
+`app/worker_dispatch.py` must pass the full `StreamResultPayload.commit_meta` into `plan_stream_result()` before any UI/paste effect. Do not drop `sentence_pause`, `pause_seconds`, `forced_commit` or `whisper_sentence_end`: those facts affect the exact inserted text.
+
+`app/streaming.py` may render widgets, call Windows paste and execute already-planned voice commands, but it should not reimplement dedupe/punctuation/command-split decisions. Before text-insertion changes, read `docs/REALTIME_TEXT_COMMIT.md` and run `tests/test_realtime_text_pipeline.py`.

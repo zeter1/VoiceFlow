@@ -191,3 +191,25 @@ Automated tests and packaged self-test do **not** prove:
 - insertion into Chrome/Firefox/Telegram/elevated or unusual Windows applications.
 
 Mark those claims `NOT VERIFIED` until interactive Windows evidence exists.
+
+## Architecture 2.7: text plan after worker queue
+
+After a current-session `StreamResultPayload` passes the stale/after-stop gate, the main thread does not immediately paste the payload.
+
+```text
+StreamResultPayload(raw, cleaned, commit_meta)
+                ↓
+     RealtimeTextPipeline.plan_stream_result()
+        ↙              ↓                ↘
+ display text     voice command     insertion plan
+                                      ↓
+                         exact text + exact paste_text
+                                      ↓
+                         app/streaming.py side effect
+                                      ↓ success only
+                    HeadlessSessionController.record_commit()
+```
+
+`commit_meta` is part of the behavioral contract, not optional logging decoration. It carries pause/forced-commit/Whisper-end facts that determine punctuation and continuation casing.
+
+See REALTIME_TEXT_COMMIT.md for detailed decision rules and offline test matrix.

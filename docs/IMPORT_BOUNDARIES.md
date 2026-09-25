@@ -115,3 +115,16 @@ Allowed direction:
 - `app/realtime_worker.py` must not import Tkinter, pyautogui, tray/notification adapters or Windows insertion APIs.
 
 Do not move `get_frames_since`, `SessionTranscriptionRequest`, frame-cursor retry rules or temporary-WAV cleanup back into `app/streaming.py`. Do not move UI/paste side effects into `RealtimeWorkerEngine`.
+
+## Architecture 2.7 text-commit boundary
+
+Canonical owners:
+- primitive normalization/dedupe/punctuation/tail algorithms → `core/realtime.py`;
+- LocalTextCleaner behavior → `services/text_cleaner.py` through `TextCleanerContract`;
+- orchestration from worker text to display/command/exact insertion plan → `app/realtime_text_pipeline.py`;
+- main-thread queue acceptance → `app/worker_dispatch.py`;
+- Tk rendering / Windows paste / pyautogui command side effects → `app/streaming.py` and `app/actions.py`.
+
+`app/realtime_text_pipeline.py` may depend on core text algorithms, `TextCleanerContract` and pure `voice_commands.py`. It must not import Tkinter, pyautogui, Windows insertion or runtime facade.
+
+Do not make `worker_dispatch.py` manually rebuild punctuation/dedupe decisions. Do not make `streaming.py` choose raw-vs-cleaned or split trailing commands again. Preserve `commit_meta` through the planner.
