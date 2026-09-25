@@ -109,7 +109,7 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("Backward-compatible runtime facade", source)
 
     def test_source_mode_runtime_data_stays_at_repository_root(self) -> None:
-        source = (PACKAGE / "runtime.py").read_text(encoding="utf-8")
+        source = (PACKAGE / "config.py").read_text(encoding="utf-8")
         self.assertIn('if package_dir.name == "voiceflow_app":', source)
         self.assertIn("return package_dir.parent", source)
 

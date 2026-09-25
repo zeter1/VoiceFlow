@@ -9,6 +9,8 @@
 - Добавлены автоматические architecture guards, которые защищают новые границы от обратного слияния в монолит.
 - Сохранены прежние пути пользовательских logs/settings и старый запуск python voiceflow.py.
 
+- Исправлен stale architecture-test oracle: APP_DIR/get_app_dir теперь корректно проверяется в config.py после декомпозиции runtime.
+
 ## Проверка сборки
 
 GitHub Actions должен выполнить compile, offline regression/architecture tests, PyInstaller build, packaged VoiceFlow.exe --self-test, ZIP/SHA-256 и публикацию prerelease.

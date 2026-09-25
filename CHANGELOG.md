@@ -36,3 +36,8 @@
 - Добавлены architecture guards: context.py не может вернуться незаметно, app orchestration не допускает wildcard imports, runtime facade ограничен по размеру.
 - AI/architecture документация синхронизирована с новыми владельцами.
 - Windows portable binary пересобирается после изменения import/package graph.
+
+### Corrective Architecture 2.1 test update
+
+- Обновлён repository contract для APP_DIR: после декомпозиции canonical owner пути приложения находится в config.py, а не в compatibility runtime.py.
+- Первый Architecture 2.1 CI run подтвердил compile и остальные 27 тестов; stale structural oracle исправлен без изменения runtime behavior.
