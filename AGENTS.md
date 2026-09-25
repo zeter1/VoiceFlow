@@ -17,14 +17,19 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - voiceflow_app/core/hotkey_state.py — pure hotkey edge/debounce decisions.
 - voiceflow_app/config.py — paths and stable runtime constants.
 - voiceflow_app/diagnostics.py — logging, diagnostic snapshots and process-level failure handling.
-- voiceflow_app/dependencies.py — third-party dependency loading and microphone discovery.
+- voiceflow_app/dependencies.py — third-party package loading only.
+- voiceflow_app/audio_devices.py — microphone/input-device discovery adapter.
+- voiceflow_app/cuda_runtime.py — CUDA runtime/DLL/preflight adapter and backend policy.
+- voiceflow_app/windows_startup.py — Windows startup-registry adapter.
+- voiceflow_app/windows_insertion.py — foreground target and native paste adapter.
 - voiceflow_app/hotkey_config.py — hotkey normalization/VK mapping.
 - voiceflow_app/settings.py — AppSettings/RuntimeSettings/SettingsStore.
 - voiceflow_app/voice_commands.py — command vocabulary and parsing.
 - voiceflow_app/windows.py — startup, foreground target and native paste adapters.
 - services/audio.py — AudioRecorder.
-- services/transcription.py — LocalTranscriber / faster-whisper.
+- services/transcription.py — LocalTranscriber / faster-whisper; environment probing is injected.
 - services/text_cleaner.py — LocalTextCleaner.
+- services/contracts.py — explicit Protocol contracts for recorder/transcriber/cleaner.
 - ui/notifications.py — notification windows.
 - ui/tray.py — system tray.
 - app/main_window.py — VoiceFlowOfflineApp composition/constructor.
@@ -39,6 +44,7 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - docs/AI_CONTEXT.md — task-to-file navigation.
 - docs/DEVELOPMENT.md — verification/release commands.
 - docs/IMPORT_BOUNDARIES.md — canonical import owners and dependency directions.
+- docs/SERVICE_CONTRACTS.md — service ports, adapters, injection seams and offline-test strategy.
 
 ## Critical invariants
 
@@ -55,15 +61,15 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 
 ## Task routing
 
-Microphone -> services/audio.py + app/recording.py.
-Whisper/CUDA/model -> services/transcription.py + app/streaming.py.
+Microphone capture -> services/audio.py + app/recording.py. Microphone enumeration -> audio_devices.py + app/controls.py.
+Whisper/model -> services/transcription.py + app/streaming.py. CUDA/DLL/preflight -> cuda_runtime.py.
 Duplicates/missing realtime text -> app/streaming.py.
 Punctuation/cleanup -> services/text_cleaner.py.
 Voice commands -> voice_commands.py parsing + app/streaming.py execution.
 Hotkey starts once/double fires -> app/hotkeys.py + hotkey_trace.jsonl.
-Wrong-window/paste failure -> windows.py target helpers + app/actions.py + insertion.jsonl.
+Wrong-window/paste failure -> windows_insertion.py + app/actions.py + insertion.jsonl.
 Tray/notification -> ui/*.
-Settings/autostart -> settings.py + windows.py + app/actions.py.
+Settings/autostart -> settings.py + windows_startup.py + app/actions.py.
 EXE/release -> workflow + RELEASE_NOTES_RU.md.
 
 ## Change workflow
@@ -95,3 +101,7 @@ Architecture 2.2 removes every internal dependency on runtime.py and every wildc
 ## Documentation split
 
 Technical/AI docs stay in docs/. End-user educational material lives in docs/user-guide/. Do not mix user tutorials back into the technical architecture root.
+
+## Architecture 2.3 service boundary
+
+Application orchestration depends on service behavior, not CUDA/DLL/PortAudio/registry discovery details. Keep environment probing in adapters. When changing AudioRecorder, LocalTranscriber or LocalTextCleaner, check services/contracts.py and docs/SERVICE_CONTRACTS.md first. Prefer a fake-backed offline test before hardware/runtime validation.

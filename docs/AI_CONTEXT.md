@@ -11,17 +11,22 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 - runtime.py: external compatibility facade only; internal modules must not import it.
 - config.py: paths and runtime constants.
 - diagnostics.py: logs, diagnostics and exception hooks.
-- dependencies.py: third-party modules and microphone discovery.
+- dependencies.py: third-party package loading only.
+- audio_devices.py: microphone catalog / PortAudio discovery adapter.
+- cuda_runtime.py: CUDA DLL/preflight adapter and backend candidate policy.
 - hotkey_config.py: shortcut normalization/VK mapping.
 - settings.py: persisted and runtime settings.
 - voice_commands.py: voice command vocabulary/parsing.
-- windows.py: Windows startup/target/native paste adapters.
+- windows.py: compatibility re-export for historical callers.
+- windows_startup.py: registry startup command/state.
+- windows_insertion.py: focused HWND/caret target and native paste.
 - core/realtime.py: pure realtime text decisions.
 - core/recording_state.py: pure recording state/repair classification.
 - core/hotkey_state.py: pure hotkey edge/debounce decisions.
 - services/audio.py: microphone capture.
-- services/transcription.py: model lifecycle, CPU/CUDA, inference.
+- services/transcription.py: model lifecycle and inference; backend environment is injected.
 - services/text_cleaner.py: punctuation/fillers/grammar/formatting.
+- services/contracts.py: Protocol contracts for the three service boundaries.
 - app/ui.py: Tk interface.
 - app/controls.py: microphone/hotkey controls.
 - app/hotkeys.py: registration/polling/debounce/dispatch.
@@ -51,7 +56,7 @@ Symptom "works once", double start/stop or stuck hotkey: inspect app/hotkeys.py,
 
 ## Insertion diagnostics
 
-For wrong target/paste failure: windows.py + app/actions.py + insertion.jsonl. Check foreground restoration, clipboard/native Ctrl+V fallback and privilege mismatch.
+For wrong target/paste failure: windows_insertion.py + app/actions.py + insertion.jsonl. Check foreground restoration, clipboard/native Ctrl+V fallback and privilege mismatch.
 
 ## Logs
 
@@ -88,3 +93,7 @@ Architecture 2.2 rule: every internal module uses explicit owner imports; contex
 ## Import boundary shortcut
 
 Перед добавлением cross-module import открой [IMPORT_BOUNDARIES.md](IMPORT_BOUNDARIES.md). Если symbol уже имеет canonical owner, импортируй owner напрямую; не прокладывай зависимость через runtime.py.
+
+## Service/adapters rule
+
+Hardware/environment knowledge must stop at adapter boundaries. `LocalTranscriber` may ask a backend-runtime port for candidate/preflight results, but it must not call `find_windows_dll` or `subprocess.run` itself. `app/controls.py` asks `audio_devices.py` for microphones; `dependencies.py` must not own enumeration. See [SERVICE_CONTRACTS.md](SERVICE_CONTRACTS.md).

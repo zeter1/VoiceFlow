@@ -12,11 +12,15 @@
 | --- | --- |
 | пути приложения, constants, streaming/hotkey thresholds | `config.py` |
 | logs, diagnostics, exception/single-instance helpers | `diagnostics.py` |
-| numpy/sounddevice/optional third-party packages, microphone discovery | `dependencies.py` |
+| numpy/sounddevice/optional third-party package loading | `dependencies.py` |
+| microphone/input-device discovery | `audio_devices.py` |
+| CUDA DLL/preflight/backend environment | `cuda_runtime.py` |
 | hotkey normalization / Windows VK mapping | `hotkey_config.py` |
 | persisted/runtime settings models | `settings.py` |
 | voice-command vocabulary/parser | `voice_commands.py` |
-| Windows startup, foreground target, native paste | `windows.py` |
+| Windows startup registry/command | `windows_startup.py` |
+| Windows foreground target/native paste | `windows_insertion.py` |
+| historical combined Windows import path | `windows.py` facade |
 | deterministic realtime/recording/hotkey decisions | `core/*` |
 | microphone/model/text-cleaning behavior | `services/*` |
 | tray/toast presentation | `ui/*` |
@@ -27,11 +31,15 @@
 - `core/*` → Python stdlib only. Не зависит от Tkinter, runtime facade, services или platform adapters.
 - `config.py` → stdlib only.
 - `diagnostics.py` → config + stdlib.
-- `dependencies.py` → diagnostics + third-party packages.
+- `dependencies.py` → diagnostics + third-party packages; no device enumeration.
+- `audio_devices.py` → Protocol/stdlib; production backend imported lazily.
+- `cuda_runtime.py` → config + stdlib/subprocess; actual DLL finder is lazy/injectable.
 - `hotkey_config.py` → config + stdlib/platform API.
 - `settings.py` → config + diagnostics + hotkey_config.
 - `voice_commands.py` → stdlib.
-- `windows.py` → config + dependencies + Windows/stdlib APIs.
+- `windows_startup.py` → config + winreg/stdlib.
+- `windows_insertion.py` → config + optional pyautogui + Windows/stdlib APIs.
+- `windows.py` → re-export only.
 - `services/*` → focused owners выше; не app/ui/runtime.
 - `ui/*` → config/dependencies/diagnostics/windows по необходимости; UI infrastructure не владеет recording truth.
 - `app/*` → core + owner modules + services/ui. Mutable session state остаётся у `VoiceFlowOfflineApp`.
@@ -46,7 +54,7 @@ Recording state decision → `core/recording_state.py`; microphone side effects 
 
 Realtime text decision → `core/realtime.py`; inference → `services/transcription.py`; worker/session flow → `app/streaming.py`.
 
-Paste target/native Ctrl+V → `windows.py`; user action and clipboard flow → `app/actions.py`.
+Paste target/native Ctrl+V → `windows_insertion.py`; startup registry → `windows_startup.py`; user action/clipboard flow → `app/actions.py`.
 
 Persisted schema/store → `settings.py`; widgets/editing controls → `app/ui.py` / `app/controls.py`.
 
@@ -61,3 +69,7 @@ Persisted schema/store → `settings.py`; widgets/editing controls → `app/ui.p
 - наличие canonical architecture/AI docs.
 
 Если feature требует нарушить boundary, сначала пересмотри state owner и contract. Не обходи guard дополнительным facade, dynamic import или suppression без архитектурной причины.
+
+## Service contracts
+
+`services/contracts.py` is the behavioral port map for AudioRecorder, LocalTranscriber and LocalTextCleaner. Adapters such as `audio_devices.py` and `cuda_runtime.py` must remain independently testable with fakes. See SERVICE_CONTRACTS.md for expected call surfaces and test strategy.

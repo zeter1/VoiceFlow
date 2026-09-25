@@ -14,11 +14,15 @@ Architecture 2.1 убирает giant runtime owner:
 
 - config.py — APP_DIR, log/settings paths и стабильные runtime constants;
 - diagnostics.py — structured logs, dependency snapshot, single-instance lock и exception hooks;
-- dependencies.py — numpy/sounddevice и optional third-party modules + microphone discovery;
+- dependencies.py — numpy/sounddevice и optional third-party package loading;
+- audio_devices.py — injectable microphone catalog / PortAudio discovery;
+- cuda_runtime.py — CUDA runtime probing, DLL checks, subprocess preflight и backend candidate policy;
 - hotkey_config.py — normalization, validation и Windows VK mapping;
 - settings.py — AppSettings, RuntimeSettings и SettingsStore;
 - voice_commands.py — vocabulary и text-to-command parsing;
-- windows.py — startup, HWND/focus target и native Ctrl+V;
+- windows_startup.py — startup registry/command;
+- windows_insertion.py — HWND/focus target и native Ctrl+V;
+- windows.py — compatibility re-export без implementation;
 - runtime.py — только внешний compatibility facade с re-export owner symbols; внутренний код его не импортирует.
 
 При source-запуске APP_DIR остаётся корнем проекта. При frozen-запуске — каталогом VoiceFlow.exe.
@@ -36,10 +40,12 @@ voiceflow_app/core/hotkey_state.py хранит edge state machine физиче�
 ## Services
 
 services/audio.py — microphone capture и frame lifecycle.
-services/transcription.py — lazy faster-whisper model, CPU/CUDA/compute policy, warm-up/inference.
+services/transcription.py — lazy faster-whisper model lifecycle/inference; CUDA environment policy приходит через injected backend runtime.
 services/text_cleaner.py — punctuation, fillers, typo repair, sentence flow, term preservation, optional LanguageTool and output modes.
 
 Audio callback не выполняет Whisper inference. CUDA/model/audio failures диагностируются отдельно.
+
+`services/contracts.py` фиксирует минимальные Protocol contracts AudioRecorder/LocalTranscriber/LocalTextCleaner. Конкретные классы остаются structural implementations; orchestration не должно знать детали device enumeration, DLL probing или registry API.
 
 ## UI infrastructure
 
@@ -88,7 +94,7 @@ Internal modules must not import runtime.py; import the focused owner directly.
 Prefer pure/testable helpers for parsing/dedupe/state decisions.
 Before cross-module state changes identify owner, invariant, failure semantics and verification route.
 
-See also: ../AGENTS.md, AI_CONTEXT.md, IMPORT_BOUNDARIES.md, DEVELOPMENT.md, ../SECURITY.md.
+See also: ../AGENTS.md, AI_CONTEXT.md, IMPORT_BOUNDARIES.md, SERVICE_CONTRACTS.md, DEVELOPMENT.md, ../SECURITY.md.
 
 ## Compatibility boundary
 
@@ -97,3 +103,11 @@ context.py удалён. Architecture 2.2 перевела app/*, services/*, ui
 runtime.py не имеет внутренних consumers и сохраняется только как внешний compatibility import path. Он состоит только из package re-exports; repository contracts запрещают добавлять в него implementation или возвращать внутренние зависимости на facade.
 
 Подробные разрешённые направления зависимостей: IMPORT_BOUNDARIES.md.
+
+## Architecture 2.3 adapters
+
+`audio_devices.py` имеет fake-friendly backend surface и тестирует формирование device labels/default selection без реального микрофона.
+
+`cuda_runtime.py` владеет environment probing и child-process CUDA preflight. `LocalTranscriber` получает `backend_runtime` и `model_factory` через constructor seams; это позволяет тестировать backend policy независимо от GPU/faster-whisper model load.
+
+Windows startup registry и text insertion разделены физически, чтобы изменения автозапуска не затрагивали HWND/focus/paste code и наоборот.
