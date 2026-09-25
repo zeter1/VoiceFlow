@@ -136,19 +136,29 @@ class WorkerDispatchMixin:
                 return
             original_raw = raw
             original_cleaned = cleaned
-            raw, cleaned, command = self._split_stream_voice_command(raw, cleaned)
-            if raw or cleaned:
+            plan = self.realtime_text_pipeline.plan_stream_result(
+                raw,
+                cleaned,
+                previous_inserted_text=self.stream_inserted_text,
+                origin=origin,
+                stream_mode=stream_mode,
+                insert_edited_text=bool(self.insert_edited_text_var.get()),
+                commit_meta=commit_meta if isinstance(commit_meta, dict) else {},
+            )
+            if plan.raw or plan.cleaned:
                 self._handle_stream_text_piece(
                     session_id=session_id,
-                    raw=raw,
-                    cleaned=cleaned,
+                    raw=plan.raw,
+                    cleaned=plan.cleaned,
                     origin=origin,
                     stream_mode=stream_mode,
                     is_final=is_final,
+                    insertion_plan=plan.insertion,
+                    commit_meta=commit_meta if isinstance(commit_meta, dict) else {},
                 )
-            if command and stream_mode == "Вставлять фрагментами" and origin == "hotkey":
+            if plan.command and plan.execute_command:
                 self._execute_voice_control_command(
-                    command,
+                    plan.command,
                     session_id=session_id,
                     raw_text=original_raw,
                     cleaned_text=original_cleaned,
@@ -181,8 +191,12 @@ class WorkerDispatchMixin:
                     self.status_var.set("Ошибка вставки")
                     self.notify("⚠ Текст распознан, но не вставился\nОн скопирован в буфер обмена — нажми Ctrl+V", kind="warning", duration_ms=4500)
             elif streaming_insert_used:
-                final_text = cleaned if self.insert_edited_text_var.get() else raw
-                tail = self._get_missing_final_tail(self.stream_inserted_text, final_text)
+                tail = self.realtime_text_pipeline.final_tail(
+                    self.stream_inserted_text,
+                    raw=raw,
+                    cleaned=cleaned,
+                    insert_edited_text=bool(self.insert_edited_text_var.get()),
+                )
                 if tail:
                     ok = self.paste_text_to_current_target(" " + tail, show_messages=False)
                     if ok:

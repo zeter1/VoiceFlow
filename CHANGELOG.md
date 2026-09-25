@@ -111,3 +111,12 @@
 - Added headless integration regressions for speech→pause→result, noise→skip→continue, filtered-chunk cursor advancement, cancellation, context reset and transcription-failure recovery.
 - Fixed a latent failure-masking path: transcription exceptions that occur before a WAV path is returned can no longer be replaced by an uninitialized wav_path cleanup error.
 - Worker queue typing in VoiceFlowOfflineApp now reflects typed/legacy-coercible message objects rather than tuple-only payloads.
+
+## 2026-09-25 — Architecture 2.7: Headless Realtime Text Commit & Insertion Decisions
+
+- Added app/realtime_text_pipeline.py as the headless owner of realtime cleanup, command splitting, inserted-text dedupe, punctuation-at-commit and final-tail decisions.
+- app/streaming.py no longer wraps core realtime text decisions; it keeps Tk text rendering, actual paste/notification side effects and voice-control execution.
+- worker_dispatch now builds a RealtimeResultPlan before any UI/paste effect and carries typed insertion/command decisions forward.
+- Fixed a real metadata propagation bug: StreamResultPayload.commit_meta (sentence pause, forced commit, Whisper sentence end) is now passed into the insertion planner instead of being dropped before punctuation-at-paste.
+- Exact paste payload (including trailing separator), raw-vs-cleaned selection and command-vs-text separation are regression-tested without Tk or Windows APIs.
+- Worker engine now receives cleanup/dedupe callbacks directly from RealtimeTextPipeline, keeping one text-policy owner across recognition and insertion stages.

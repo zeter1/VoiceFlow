@@ -44,6 +44,7 @@ EXPECTED_MODULES = {
     "app/hotkeys.py",
     "app/recording.py",
     "app/realtime_worker.py",
+    "app/realtime_text_pipeline.py",
     "app/streaming.py",
     "app/worker_dispatch.py",
     "app/actions.py",
@@ -185,20 +186,41 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertNotIn("_windows_missing_cuda_dlls", source)
         self.assertIn("backend_candidates(", source)
 
-    def test_streaming_realtime_worker_and_dispatch_are_extracted(self) -> None:
+    def test_realtime_worker_text_pipeline_and_dispatch_are_extracted(self) -> None:
         streaming = (PACKAGE / "app" / "streaming.py").read_text(encoding="utf-8")
         engine = (PACKAGE / "app" / "realtime_worker.py").read_text(encoding="utf-8")
+        text_pipeline = (PACKAGE / "app" / "realtime_text_pipeline.py").read_text(encoding="utf-8")
         dispatch = (PACKAGE / "app" / "worker_dispatch.py").read_text(encoding="utf-8")
-        self.assertLessEqual(len(streaming.splitlines()), 560)
+        self.assertLessEqual(len(streaming.splitlines()), 420)
         self.assertLessEqual(len(engine.splitlines()), 470)
-        self.assertLessEqual(len(dispatch.splitlines()), 360)
+        self.assertLessEqual(len(text_pipeline.splitlines()), 220)
+        self.assertLessEqual(len(dispatch.splitlines()), 370)
         self.assertNotIn("def _frames_to_float_mono", streaming)
         self.assertNotIn("def _handle_worker_message", streaming)
         self.assertNotIn("SessionTranscriptionRequest(", streaming)
         self.assertNotIn("def process_frames", streaming)
+        self.assertNotIn("core_prepare_stream_chunk_for_paste", streaming)
+        self.assertNotIn("def _clean_stream_chunk_for_commit", streaming)
+        self.assertNotIn("def _split_stream_voice_command", streaming)
+        self.assertNotIn("def _get_missing_final_tail", streaming)
         self.assertIn("RealtimeWorkerEngine(", streaming)
+        self.assertIn("RealtimeTextPipeline", (PACKAGE / "app" / "main_window.py").read_text(encoding="utf-8"))
+        self.assertIn("plan_stream_result(", dispatch)
+        self.assertIn("commit_meta=commit_meta", dispatch)
         self.assertIn("decide_chunk_commit(", engine)
         self.assertIn("coerce_worker_message(", dispatch)
+
+    def test_realtime_text_pipeline_is_headless(self) -> None:
+        path = PACKAGE / "app" / "realtime_text_pipeline.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+        forbidden = {"tkinter", "dependencies", "voiceflow_app.dependencies", "windows", "pyautogui"}
+        self.assertFalse(sorted(imported & forbidden), f"Realtime text pipeline must stay headless: {sorted(imported & forbidden)}")
 
     def test_realtime_worker_engine_is_headless(self) -> None:
         path = PACKAGE / "app" / "realtime_worker.py"

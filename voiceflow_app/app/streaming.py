@@ -5,7 +5,6 @@ The headless frame/transcription worker lives in app/realtime_worker.py.
 
 from __future__ import annotations
 
-import queue
 import re
 import threading
 import time
@@ -27,25 +26,10 @@ from ..diagnostics import (
 )
 from ..settings import RuntimeSettings
 from ..worker_messages import WorkerMessageKind, put_worker_message
+from .realtime_text_pipeline import RealtimeInsertionPlan, RealtimeTextConfig
 from .realtime_worker import RealtimeWorkerConfig, RealtimeWorkerEngine
-from ..voice_commands import (
-    normalize_voice_command_text,
-    split_trailing_voice_control_command,
-    voice_control_command_from_text,
-)
 from ..windows import PasteTarget, get_paste_target
 from ..core.realtime_policy import build_realtime_timing
-from ..core.realtime import (
-    dedupe_stream_chunk as core_dedupe_stream_chunk,
-    get_missing_final_tail as core_get_missing_final_tail,
-    is_bad_stream_text as core_is_bad_stream_text,
-    lowercase_continuation_start as core_lowercase_continuation_start,
-    normalize_stream_words as core_normalize_stream_words,
-    prepare_stream_chunk_for_paste as core_prepare_stream_chunk_for_paste,
-    soften_open_stream_text as core_soften_open_stream_text,
-    split_stream_voice_command as core_split_stream_voice_command,
-    stream_has_sentence_end as core_stream_has_sentence_end,
-)
 
 
 class StreamingMixin:
@@ -163,80 +147,6 @@ class StreamingMixin:
             return "Точно"
         return runtime_settings.recognition_quality
 
-    def _normalize_stream_words(self, text: str) -> list[str]:
-        return core_normalize_stream_words(text)
-
-    def _dedupe_stream_chunk(self, previous_text: str, new_text: str) -> str:
-        return core_dedupe_stream_chunk(
-            previous_text,
-            new_text,
-            is_voice_command=lambda text: voice_control_command_from_text(text) is not None,
-        )
-
-    def _is_bad_stream_text(self, text: str) -> bool:
-        return core_is_bad_stream_text(text)
-
-    def _soften_open_stream_text(self, text: str) -> str:
-        return core_soften_open_stream_text(text)
-
-    def _clean_stream_chunk_for_commit(self, raw_text: str, runtime_settings: RuntimeSettings, keep_sentence_end: bool = True) -> tuple[str, str]:
-        raw_text = re.sub(r"\s+", " ", raw_text or "").strip()
-        raw_had_trailing_ellipsis = bool(re.search(r"(?:\.{2,}|…)[\s.!?…]*$", raw_text))
-        if self._is_bad_stream_text(raw_text):
-            return "", ""
-        clean_mode = "Чистый текст" if runtime_settings.mode != "Точно как сказано" else "Точно как сказано"
-        cleaned = self.cleaner.clean(
-            raw_text,
-            clean_mode,
-            runtime_settings.language,
-            custom_terms=runtime_settings.custom_terms,
-            deep_grammar=False,
-        )
-        cleaned = re.sub(r"[ \t\r\f\v]+", " ", cleaned).strip()
-        if self._is_bad_stream_text(cleaned):
-            # Do not resurrect punctuation-only hallucinations by falling back
-            # to raw_text. If both forms are unusable, skip the chunk.
-            if self._is_bad_stream_text(raw_text):
-                return "", ""
-            cleaned = raw_text
-        if raw_had_trailing_ellipsis or not keep_sentence_end:
-            cleaned = self._soften_open_stream_text(cleaned)
-        return raw_text, cleaned
-
-    def _stream_has_sentence_end(self, text: str) -> bool:
-        return core_stream_has_sentence_end(text)
-
-    def _lowercase_continuation_start(self, text: str) -> str:
-        return core_lowercase_continuation_start(text)
-
-    def _prepare_stream_chunk_for_paste(
-        self,
-        previous_text: str,
-        chunk_text: str,
-        commit_meta: Optional[dict[str, object]] = None,
-        raw_text: str = "",
-    ) -> str:
-        decision = core_prepare_stream_chunk_for_paste(
-            previous_text,
-            chunk_text,
-            commit_meta=commit_meta,
-            raw_text=raw_text,
-        )
-        log_category(
-            "streaming",
-            "pause_punctuation_decision",
-            chunk_preview=decision.text[:160],
-            pause_seconds=round(decision.pause_seconds, 3),
-            sentence_pause=decision.sentence_pause,
-            whisper_sentence_end=decision.whisper_sentence_end,
-            previous_had_sentence_end=decision.previous_had_sentence_end,
-            forced_commit=decision.forced_commit,
-        )
-        return decision.text
-
-    def _get_missing_final_tail(self, already_inserted: str, final_text: str) -> str:
-        return core_get_missing_final_tail(already_inserted, final_text)
-
     def _realtime_stream_worker(
         self,
         origin: str,
@@ -250,6 +160,11 @@ class StreamingMixin:
             runtime_settings.realtime_chunk_seconds,
             use_vad_filter=runtime_settings.use_vad_filter,
             cpu_path_expected=self._cpu_realtime_path_expected(runtime_settings),
+        )
+        text_config = RealtimeTextConfig(
+            mode=runtime_settings.mode,
+            language=runtime_settings.language,
+            custom_terms=runtime_settings.custom_terms,
         )
         engine = RealtimeWorkerEngine(
             recorder=self.recorder,
@@ -271,12 +186,12 @@ class StreamingMixin:
             ),
             start_frame_index=self.stream_last_frame_index,
             context_reset_event=self.stream_context_reset_event,
-            clean_chunk=lambda raw_text, keep_sentence_end: self._clean_stream_chunk_for_commit(
+            clean_chunk=lambda raw_text, keep_sentence_end: self.realtime_text_pipeline.clean_for_commit(
                 raw_text,
-                runtime_settings,
+                text_config,
                 keep_sentence_end=keep_sentence_end,
             ),
-            dedupe_chunk=self._dedupe_stream_chunk,
+            dedupe_chunk=self.realtime_text_pipeline.dedupe_chunk,
         )
         engine.run(stop_event)
 
@@ -351,14 +266,6 @@ class StreamingMixin:
             log_exception("Audio processing worker crashed", exc, wav_path=wav_path, origin=origin)
             put_worker_message(self.worker_queue, WorkerMessageKind.ERROR, exc)
 
-    def _split_stream_voice_command(self, raw: str, cleaned: str) -> tuple[str, str, Optional[dict[str, object]]]:
-        return core_split_stream_voice_command(
-            raw,
-            cleaned,
-            splitter=split_trailing_voice_control_command,
-            normalizer=normalize_voice_command_text,
-        )
-
     def _reset_stream_message_state(self, session_id: Optional[int], reason: str) -> None:
         self.session_controller.reset_commits()
         self.stream_context_reset_event.set()
@@ -373,6 +280,7 @@ class StreamingMixin:
         origin: str,
         stream_mode: str,
         is_final: bool,
+        insertion_plan: Optional[RealtimeInsertionPlan] = None,
         commit_meta: Optional[dict[str, object]] = None,
     ) -> None:
         raw = (raw or "").strip()
@@ -388,43 +296,42 @@ class StreamingMixin:
         self._append_stream_text(self.clean_text, cleaned)
         self.status_var.set("Готово" if is_final and not self.recorder.is_recording else "Стриминг...")
 
-        if stream_mode == "Вставлять фрагментами" and origin == "hotkey":
-            chunk_text = cleaned if self.insert_edited_text_var.get() else raw
-            chunk_text = self._dedupe_stream_chunk(self.stream_inserted_text, chunk_text).strip()
-            chunk_text = self._prepare_stream_chunk_for_paste(
-                self.stream_inserted_text,
-                chunk_text,
-                commit_meta=commit_meta,
-                raw_text=raw,
+        if insertion_plan is not None:
+            punctuation = insertion_plan.punctuation
+            log_category(
+                "streaming",
+                "pause_punctuation_decision",
+                chunk_preview=insertion_plan.text[:160],
+                pause_seconds=round(punctuation.pause_seconds, 3),
+                sentence_pause=punctuation.sentence_pause,
+                whisper_sentence_end=punctuation.whisper_sentence_end,
+                previous_had_sentence_end=punctuation.previous_had_sentence_end,
+                forced_commit=punctuation.forced_commit,
+                selected_source=insertion_plan.selected_source,
             )
-            if chunk_text:
-                ok = self.paste_text_to_current_target(chunk_text + " ", show_messages=False)
-                log_dictation_text(
-                    "stream_insert",
-                    session_id=session_id,
-                    origin=origin,
-                    mode=stream_mode,
-                    raw_text=raw,
-                    cleaned_text=cleaned,
-                    inserted_text=chunk_text,
-                    is_final=is_final,
-                    paste_ok=ok,
-                    commit_meta=commit_meta or {},
-                )
-                if ok:
-                    self.session_controller.record_commit(chunk_text)
-                    if self.recorder.is_recording:
-                        # Do not replace the persistent "Идёт запись" toast with
-                        # short success popups for every inserted chunk. Logs
-                        # showed recording and typing were working, but the user
-                        # thought repeat hotkey was broken because the visible
-                        # toast was not the recording one.
-                        self._show_recording_notification(force_recreate=False)
-                    else:
-                        message = "✅ Финальный фрагмент вставлен" if is_final else "⚡ Стабильный фрагмент вставлен"
-                        self.notify(message, kind="success", duration_ms=1200 if is_final else 900)
+            ok = self.paste_text_to_current_target(insertion_plan.paste_text, show_messages=False)
+            log_dictation_text(
+                "stream_insert",
+                session_id=session_id,
+                origin=origin,
+                mode=stream_mode,
+                raw_text=raw,
+                cleaned_text=cleaned,
+                inserted_text=insertion_plan.text,
+                selected_source=insertion_plan.selected_source,
+                is_final=is_final,
+                paste_ok=ok,
+                commit_meta=commit_meta or {},
+            )
+            if ok:
+                self.session_controller.record_commit(insertion_plan.text)
+                if self.recorder.is_recording:
+                    self._show_recording_notification(force_recreate=False)
                 else:
-                    self.notify("⚠ Фрагмент распознан, но не вставился", kind="warning", duration_ms=1600)
+                    message = "✅ Финальный фрагмент вставлен" if is_final else "⚡ Стабильный фрагмент вставлен"
+                    self.notify(message, kind="success", duration_ms=1200 if is_final else 900)
+            else:
+                self.notify("⚠ Фрагмент распознан, но не вставился", kind="warning", duration_ms=1600)
 
     def _execute_voice_control_command(
         self,
