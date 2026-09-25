@@ -86,7 +86,7 @@ AppSettings = persisted user configuration.
 RuntimeSettings = processing snapshot.
 SettingsStore = persistence owner.
 
-voiceflow_settings and voiceflow_logs are runtime/private data and stay outside Git.
+voiceflow_settings and Логи проблем are runtime/private data and stay outside Git.
 
 ## Verification boundary
 
@@ -202,3 +202,9 @@ active Windows target
 A successful external paste is the transactional boundary for committed text. Planned text is not committed until the external adapter reports success.
 
 Architecture 2.8 also removes the old unused `_process_audio_worker` + RESULT/ERROR queue path and the unused async STREAM_FINISHED/STREAM_FINISH_TIMEOUT finalizer. Current product behavior is realtime-only: stop releases immediately and does not launch a second final transcription/paste pipeline.
+
+## Startup diagnostics boundary
+
+Startup uses a lightweight `single_instance.py` before diagnostics and third-party imports. This prevents a duplicate process from paying heavy import cost or mutating `Логи проблем/_last_run` before it is rejected.
+
+`diagnostics.py` is lazy: importing the module performs no filesystem/log write. The accepted primary process initializes logging explicitly, records lock bootstrap timing, then imports the GUI/application graph.

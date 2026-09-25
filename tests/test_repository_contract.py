@@ -21,6 +21,7 @@ EXPECTED_MODULES = {
     "diagnostics.py",
     "hotkey_config.py",
     "settings.py",
+    "single_instance.py",
     "voice_commands.py",
     "windows.py",
     "windows_insertion.py",
@@ -295,10 +296,11 @@ class RepositoryContractTests(unittest.TestCase):
         source = (PACKAGE / "config.py").read_text(encoding="utf-8")
         self.assertIn('if package_dir.name == "voiceflow_app":', source)
         self.assertIn("return package_dir.parent", source)
+        self.assertIn('LOG_DIR = APP_DIR / "Логи проблем"', source)
 
     def test_runtime_user_data_remains_ignored(self) -> None:
         gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
-        required = {"voiceflow_logs/", "voiceflow_settings/", "dictation_text.txt", "*.wav"}
+        required = {"Логи проблем/", "voiceflow_logs/", "voiceflow_settings/", "dictation_text.txt", "*.wav"}
         missing = sorted(item for item in required if item not in gitignore)
         self.assertFalse(missing, f"Runtime/private data must stay ignored: {missing}")
 

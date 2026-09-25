@@ -21,7 +21,7 @@ def get_app_dir() -> Path:
         return Path.cwd()
 
 APP_DIR = get_app_dir()
-LOG_DIR = APP_DIR / "voiceflow_logs"
+LOG_DIR = APP_DIR / "Логи проблем"
 RUN_LOG_STAMP = time.strftime("%Y-%m-%d_%H-%M-%S")
 RUN_LOG_DIR = LOG_DIR / f"run_{RUN_LOG_STAMP}_{os.getpid()}"
 LAST_RUN_DIR = LOG_DIR / "_last_run"

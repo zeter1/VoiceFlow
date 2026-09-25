@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import ctypes
-from ctypes import wintypes
-import hashlib
 import importlib.metadata
 import importlib.util
 import json
@@ -18,6 +15,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from .single_instance import acquire_single_instance_lock
 from .config import (
     APP_DIR,
     APP_LOG_PATH,
@@ -45,12 +43,6 @@ from .config import (
 _LOGGING_READY = False
 _DICTATION_LOG_LOCK = threading.Lock()
 _CATEGORY_LOG_LOCK = threading.Lock()
-_SINGLE_INSTANCE_MUTEX_HANDLE: Optional[int] = None
-_SINGLE_INSTANCE_MUTEX_NAME = "Local\\VoiceFlowOffline_" + hashlib.sha256(
-    str(APP_DIR).lower().encode("utf-8", errors="ignore")
-).hexdigest()[:16]
-
-
 def _json_default(value: object) -> str:
     try:
         return str(value)
@@ -193,39 +185,6 @@ def log_exception(message: str, exc: object, **context: object) -> None:
     else:
         context.setdefault("exception", repr(exc))
         logger.error(message + _format_log_context(context), stacklevel=2)
-
-
-def acquire_single_instance_lock() -> bool:
-    """Return False when another VoiceFlow from this folder is already running."""
-    global _SINGLE_INSTANCE_MUTEX_HANDLE
-    if not IS_WINDOWS:
-        return True
-    try:
-        kernel32 = ctypes.windll.kernel32
-        kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR)
-        kernel32.CreateMutexW.restype = wintypes.HANDLE
-        kernel32.GetLastError.restype = wintypes.DWORD
-        handle = kernel32.CreateMutexW(None, False, _SINGLE_INSTANCE_MUTEX_NAME)
-        if not handle:
-            return True
-        _SINGLE_INSTANCE_MUTEX_HANDLE = handle
-        if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-            log_warning(
-                "Second application instance blocked",
-                mutex_name=_SINGLE_INSTANCE_MUTEX_NAME,
-                app_dir=APP_DIR,
-            )
-            try:
-                kernel32.CloseHandle(handle)
-            except Exception:
-                pass
-            _SINGLE_INSTANCE_MUTEX_HANDLE = None
-            return False
-        log_info("Single-instance lock acquired", mutex_name=_SINGLE_INSTANCE_MUTEX_NAME)
-        return True
-    except Exception as exc:
-        log_exception("Could not acquire single-instance lock; continuing", exc, mutex_name=_SINGLE_INSTANCE_MUTEX_NAME)
-        return True
 
 
 def log_dictation_text(event: str, **context: object) -> None:
@@ -393,6 +352,3 @@ def install_exception_logging() -> None:
             )
         threading.excepthook = threadhook
 
-
-configure_logging()
-write_diagnostics_snapshot({"phase": "module_import"})

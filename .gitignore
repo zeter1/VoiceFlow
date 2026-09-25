@@ -19,6 +19,7 @@ dist/
 
 # VoiceFlow runtime data
 voiceflow_logs/
+Логи проблем/
 voiceflow_settings/
 *.log
 crash.txt

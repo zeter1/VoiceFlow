@@ -71,8 +71,8 @@ For wrong target/paste failure: app/realtime_delivery.py + desktop_delivery.py +
 
 ## Logs
 
-Per run: voiceflow_logs/run_YYYY-MM-DD_HH-MM-SS_PID.
-Latest mirror: voiceflow_logs/_last_run.
+Per run: Логи проблем/run_YYYY-MM-DD_HH-MM-SS_PID.
+Latest mirror: Логи проблем/_last_run.
 
 voiceflow.txt = general lifecycle/errors.
 diagnostics.json = environment/dependencies.
@@ -151,3 +151,11 @@ Wrong commit/dedupe after failed paste → verify `deliver_insertion()` returns 
 Voice command parsed but not executed → inspect `VoiceCommandDeliveryOutcome.code/error`, then `CurrentTargetVoiceActionAdapter`.
 
 Offline import unexpectedly asks for NumPy/sounddevice → check that `desktop_delivery.py` does not import `dependencies.py` or `windows_insertion.py` eagerly. Full map: [DELIVERY_PORTS.md](DELIVERY_PORTS.md).
+
+## Startup/log bootstrap
+
+Canonical runtime diagnostic directory: `APP_DIR/Логи проблем`.
+
+The Windows single-instance mutex is acquired before importing diagnostics, Tk, audio/runtime dependencies or the application graph. This is a correctness invariant: a blocked second process must not clear `Логи проблем/_last_run` belonging to the active instance.
+
+`diagnostics.py` must not configure logging or write snapshots at module import time. Main startup explicitly initializes logging after the lock.

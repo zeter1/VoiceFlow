@@ -171,3 +171,9 @@ Commit invariant: `HeadlessSessionController.record_commit()` happens only after
 The old non-realtime RESULT/ERROR/finalizer queue path was removed in Architecture 2.8. Do not reintroduce a second final transcription/paste path unless product behavior explicitly changes away from realtime-only stop.
 
 Before delivery changes read `docs/DELIVERY_PORTS.md` and run `tests/test_realtime_delivery.py`, `tests/test_desktop_delivery.py`, `tests/test_repository_contract.py`.
+
+## Startup/log diagnostics
+
+Canonical runtime logs live in `Логи проблем/` beside the source entrypoint or packaged EXE. The legacy `voiceflow_logs/` path is only an old local-data location and remains ignored by Git.
+
+Single-instance lock must stay before diagnostics/dependencies/Tk/application imports. Do not add import-time `configure_logging()` or `write_diagnostics_snapshot()` calls back to diagnostics.py: a second process must exit without clearing the active process's `_last_run`.

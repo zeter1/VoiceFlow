@@ -154,3 +154,15 @@
 - Replaced the overly broad string guard for windows_insertion with an AST top-level import check.
 - Function-local lazy Windows imports are now explicitly allowed while eager desktop/audio coupling remains forbidden.
 - The previous run had all runtime delivery tests passing; only this structural oracle was incorrect.
+
+## 2026-09-25 — Log audit: startup bootstrap + «Логи проблем»
+
+- Проанализирован пользовательский архив runtime-логов: crash/error/warning/traceback не обнаружены; CUDA runtime, large-v3 warm-up, hotkey polling, tray и shutdown завершились штатно.
+- Выявлена startup-аномалия: первый log write происходил примерно за 8.5 секунды до single-instance lock из-за eager runtime imports.
+- Single-instance mutex вынесен в lightweight single_instance.py и теперь берётся до diagnostics, third-party dependencies, Tk и application graph.
+- diagnostics.py больше не создаёт/очищает логи и не пишет snapshot на import-time; logging запускается явно только после успешного single-instance gate.
+- Это не позволяет случайному второму запуску очистить _last_run работающего экземпляра.
+- Canonical папка runtime-диагностики переименована с voiceflow_logs в «Логи проблем».
+- Старый voiceflow_logs не удаляется автоматически и остаётся в .gitignore для защиты старых приватных логов.
+- Packaged self-test теперь дополнительно проверяет имя папки «Логи проблем» и полный ApplicationServices graph.
+- Добавлены startup bootstrap regression tests без third-party/audio imports.

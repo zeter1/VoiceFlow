@@ -55,8 +55,15 @@ Green compile не доказывает microphone/CUDA/hotkey behavior.
 
 ## Privacy
 
-voiceflow_logs и особенно dictation_text.txt могут содержать пользовательский текст. Не публиковать их без просмотра.
+Логи проблем и особенно dictation_text.txt могут содержать пользовательский текст. Не публиковать их без просмотра.
 
 ## Import discipline
 
 Внутри voiceflow_app не использовать wildcard imports и не импортировать runtime.py. Использовать canonical owner из [IMPORT_BOUNDARIES.md](IMPORT_BOUNDARIES.md). runtime.py существует только для внешней обратной совместимости.
+
+### Проверка startup/logging
+
+- canonical folder: `Логи проблем/`;
+- старый `voiceflow_logs/` остаётся в `.gitignore` для приватности старых локальных логов;
+- entrypoint должен брать single-instance lock до diagnostics/dependencies/Tk imports;
+- import `voiceflow_app.entrypoint` не должен сам создавать/очищать log files.

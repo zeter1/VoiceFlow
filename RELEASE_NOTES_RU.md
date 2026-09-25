@@ -1,39 +1,23 @@
 # Изменения Windows-сборки
 
-## Architecture 2.8 — Realtime Delivery Ports & Side-Effect Isolation
+## Диагностика логов и startup hardening
 
-- Windows paste и voice-action side effects вынесены за явные `TextInsertionPort` / `VoiceActionPort`.
-- Добавлен concrete `desktop_delivery.py` для clipboard/current-target/Ctrl+V/pyautogui и headless `RealtimeDeliveryController` для application orchestration.
-- `app/streaming.py` больше напрямую не импортирует pyautogui, Windows focus helpers или native paste sender.
-- Успешный paste остаётся единственным моментом, когда текст записывается как committed; failed paste не загрязняет realtime dedupe state.
-- Добавлены fake-backed regression tests для exact paste payload, failed delivery, whitespace voice commands, key/hotkey/sequence actions и reset-message-context metadata.
-- Удалён подтверждённо мёртвый legacy final-result путь (`_process_audio_worker`, RESULT/ERROR queue handling и старый async finish-finalizer), который не имел вызывающих production paths после перехода на realtime-only stop.
+- По присланному runtime-логу не обнаружены crash, ERROR/WARNING или traceback; CUDA 12/cuDNN runtime найден, preflight и `large-v3` на `cuda/int8_float16` завершились успешно.
+- Исправлена startup-проблема: single-instance lock теперь берётся **до** тяжёлых imports и до создания runtime-логов.
+- Второй случайно запущенный экземпляр больше не должен очищать `_last_run` работающей программы до того, как будет заблокирован.
+- Убраны import-time side effects из `diagnostics.py`: логи и snapshot создаёт только принятый основной процесс.
+- Папка `voiceflow_logs` переименована в **`Логи проблем`**. Новая версия программы создаёт и пишет диагностику именно туда.
+- Старую папку `voiceflow_logs` программа автоматически не удаляет.
+- Packaged self-test проверяет новое canonical имя log directory.
 
-### Corrective compile fix
+## Что в присланном запуске было нормальным
 
-- Исправлен дублированный `elif stream_warning`, который остановил первый Architecture 2.8 CI run на compile до запуска тестов.
-- Runtime behavior не менялся; повторная сборка проходит полный validation ladder.
-
-### Corrective dependency-boundary fix
-
-- Убран import общего `dependencies.py` из desktop delivery: он тянул NumPy/sounddevice и ломал offline delivery tests до установки packaging dependencies.
-- `pyperclip` и `pyautogui` теперь загружаются локально как optional desktop dependencies.
-- Добавлен architecture guard против возврата этой связности.
-
-### Corrective lazy Windows-adapter fix
-
-- Windows target/native paste adapter теперь подключается лениво только в момент реальной вставки.
-- Offline delivery tests больше не импортируют Windows/audio runtime graph и используют structural fake target.
-- Добавлен guard против eager `windows_insertion` import в delivery adapter.
-
-### Corrective repository-oracle fix
-
-- Architecture guard теперь запрещает только eager top-level `windows_insertion` import.
-- Правильный lazy function-local import разрешён и отдельно сохраняет offline importability.
-- Предыдущий run дошёл до полного offline suite; delivery/runtime tests были зелёными, ошибочным был только guard.
+- CUDA preflight занял около 17.8 секунды, затем загрузка `large-v3` ещё около 7.3 секунды; warm-up выполнялся в фоне и завершился успешно.
+- Hotkey F9 polling, tray show/hide, перенос notification и штатное завершение приложения не показали ошибок.
+- В этом конкретном архиве запись речи не запускалась, поэтому streaming/insertion/recording файлы не содержат данных о качестве диктовки.
 
 ## Проверка сборки
 
 GitHub Actions выполняет compile, полный offline regression/architecture suite, PyInstaller build, packaged `VoiceFlow.exe --self-test`, ZIP/SHA-256 и публикацию prerelease.
 
-Реальный микрофон, Whisper/CUDA, global hotkey, clipboard/focus races и вставка в конкретные Windows-приложения требуют отдельной интерактивной runtime-проверки.
+Реальная диктовка, microphone input, clipboard/focus races и CUDA performance на пользовательском ПК остаются интерактивными runtime-проверками.

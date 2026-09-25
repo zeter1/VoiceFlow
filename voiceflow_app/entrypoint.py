@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 
 from .config import (
     APP_DIR,
@@ -15,13 +16,14 @@ from .config import (
     RUN_LOG_DIR,
     START_MINIMIZED,
 )
-from .dependencies import Image, ImageDraw, WhisperModel, keyboard, np, pyautogui, pyperclip, pystray, sd
-from .diagnostics import (
+from .single_instance import (
     acquire_single_instance_lock,
-    install_exception_logging,
-    log_info,
-    write_diagnostics_snapshot,
+    single_instance_last_error,
+    single_instance_mutex_name,
 )
+
+
+_BOOTSTRAP_STARTED_AT = time.monotonic()
 
 
 def _emit_self_test_payload(payload: dict[str, object]) -> None:
@@ -40,17 +42,48 @@ def _emit_self_test_payload(payload: dict[str, object]) -> None:
 
 def run_self_test() -> int:
     """Check packaged imports without opening the GUI or microphone."""
-    checks = {
-        "numpy": np is not None,
-        "sounddevice": sd is not None,
-        "faster_whisper": WhisperModel is not None,
-        "pyperclip": pyperclip is not None,
-        "pyautogui": pyautogui is not None,
-        "keyboard": keyboard is not None,
-        "pystray": pystray is not None,
-        "pillow": Image is not None and ImageDraw is not None,
+
+    checks: dict[str, bool] = {
+        "problem_log_dir_name": LOG_DIR.name == "Логи проблем",
     }
     errors: dict[str, str] = {}
+
+    dependency_names = (
+        "numpy",
+        "sounddevice",
+        "faster_whisper",
+        "pyperclip",
+        "pyautogui",
+        "keyboard",
+        "pystray",
+        "pillow",
+    )
+    try:
+        from .dependencies import (
+            Image,
+            ImageDraw,
+            WhisperModel,
+            keyboard,
+            np,
+            pyautogui,
+            pyperclip,
+            pystray,
+            sd,
+        )
+        checks.update({
+            "numpy": np is not None,
+            "sounddevice": sd is not None,
+            "faster_whisper": WhisperModel is not None,
+            "pyperclip": pyperclip is not None,
+            "pyautogui": pyautogui is not None,
+            "keyboard": keyboard is not None,
+            "pystray": pystray is not None,
+            "pillow": Image is not None and ImageDraw is not None,
+        })
+    except BaseException as exc:
+        for name in dependency_names:
+            checks[name] = False
+        errors["runtime_dependencies"] = f"{type(exc).__name__}: {exc}"
 
     try:
         import language_tool_python  # type: ignore  # noqa: F401
@@ -66,9 +99,6 @@ def run_self_test() -> int:
         checks["tkinter"] = False
         errors["tkinter"] = f"{type(exc).__name__}: {exc}"
 
-    # Import the full application graph inside the guarded self-test so a
-    # packaged import regression becomes structured evidence instead of a
-    # windowed error dialog that leaves CI waiting forever.
     try:
         from .app.main_window import VoiceFlowOfflineApp  # noqa: F401
         checks["app_import"] = True
@@ -87,6 +117,8 @@ def run_self_test() -> int:
                 composition.cleaner,
                 composition.notification_factory,
                 composition.tray_factory,
+                composition.text_inserter,
+                composition.voice_action_executor,
             )
         )
     except BaseException as exc:
@@ -98,6 +130,7 @@ def run_self_test() -> int:
         "frozen": bool(getattr(sys, "frozen", False)),
         "executable": sys.executable,
         "app_dir": str(APP_DIR),
+        "log_dir": str(LOG_DIR),
         "checks": checks,
         "errors": errors,
     }
@@ -109,19 +142,54 @@ def main() -> None:
     if "--self-test" in sys.argv[1:]:
         raise SystemExit(run_self_test())
 
-    # GUI imports stay after the self-test gate. This is important for
-    # diagnostics of windowed packaged builds.
-    import tkinter as tk
-    from tkinter import ttk
-    from .app.main_window import VoiceFlowOfflineApp
-
-    install_exception_logging()
+    # Acquire the mutex before diagnostics, third-party dependencies, Tk or
+    # application imports. A blocked second instance must not reset _last_run
+    # or pay the heavy import cost before it exits.
     if not acquire_single_instance_lock():
         try:
-            print(f"{APP_NAME} уже запущен. Второй экземпляр закрыт, чтобы не конфликтовали горячие клавиши.")
+            print(
+                f"{APP_NAME} уже запущен. Второй экземпляр закрыт, "
+                "чтобы не конфликтовали горячие клавиши."
+            )
         except Exception:
             pass
         return
+    lock_acquired_at = time.monotonic()
+
+    from .diagnostics import (
+        install_exception_logging,
+        log_exception,
+        log_info,
+        log_warning,
+        write_diagnostics_snapshot,
+    )
+
+    install_exception_logging()
+    lock_error = single_instance_last_error()
+    if lock_error:
+        log_warning(
+            "Could not acquire single-instance lock; continuing",
+            error=lock_error,
+            mutex_name=single_instance_mutex_name(),
+        )
+    else:
+        log_info(
+            "Single-instance lock acquired before heavy imports",
+            mutex_name=single_instance_mutex_name(),
+            bootstrap_to_lock_ms=round(
+                (lock_acquired_at - _BOOTSTRAP_STARTED_AT) * 1000.0,
+                1,
+            ),
+        )
+
+    try:
+        import tkinter as tk
+        from tkinter import ttk
+        from .app.main_window import VoiceFlowOfflineApp
+    except BaseException as exc:
+        log_exception("Application startup import failed", exc)
+        raise
+
     log_info(
         "Application starting",
         argv=sys.argv,
@@ -131,6 +199,7 @@ def main() -> None:
         last_run_dir=LAST_RUN_DIR,
     )
     write_diagnostics_snapshot()
+
     root = tk.Tk()
     try:
         style = ttk.Style()
