@@ -148,3 +148,9 @@
 - desktop_delivery.py no longer imports windows_insertion.py at module import time; default target capture and native Ctrl+V sender are resolved lazily only when actual delivery occurs.
 - This prevents offline delivery tests and composition imports from transitively initializing the legacy audio dependency facade through windows_insertion.
 - Desktop delivery tests now use structural fake targets and remain completely independent from Windows/audio modules.
+
+### Architecture 2.8 corrective repository-oracle fix
+
+- Replaced the overly broad string guard for windows_insertion with an AST top-level import check.
+- Function-local lazy Windows imports are now explicitly allowed while eager desktop/audio coupling remains forbidden.
+- The previous run had all runtime delivery tests passing; only this structural oracle was incorrect.

@@ -26,6 +26,12 @@
 - Offline delivery tests больше не импортируют Windows/audio runtime graph и используют structural fake target.
 - Добавлен guard против eager `windows_insertion` import в delivery adapter.
 
+### Corrective repository-oracle fix
+
+- Architecture guard теперь запрещает только eager top-level `windows_insertion` import.
+- Правильный lazy function-local import разрешён и отдельно сохраняет offline importability.
+- Предыдущий run дошёл до полного offline suite; delivery/runtime tests были зелёными, ошибочным был только guard.
+
 ## Проверка сборки
 
 GitHub Actions выполняет compile, полный offline regression/architecture suite, PyInstaller build, packaged `VoiceFlow.exe --self-test`, ZIP/SHA-256 и публикацию prerelease.
