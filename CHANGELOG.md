@@ -74,3 +74,14 @@
 - Добавлены offline regression tests для microphone catalog, CUDA backend policy/preflight cache и соответствия concrete services объявленным contracts.
 - Repository guards запрещают возвращать device discovery в dependencies.py и CUDA environment probing внутрь transcription service.
 - Пользовательское runtime-поведение намеренно не менялось; Windows binary пересобирается для проверки нового dependency graph.
+
+## 2026-09-25 — Architecture 2.4: Application Ports & Headless Session Controller
+
+- Создан composition.py с injectable ApplicationServices; VoiceFlowOfflineApp больше не создаёт AudioRecorder/LocalTranscriber/LocalTextCleaner/NotificationManager/TrayManager напрямую.
+- Concrete desktop services загружаются лениво в composition root, поэтому composition/session modules импортируются в offline tests без Tk/PortAudio/Whisper runtime.
+- Создан app/session_controller.py: headless owner session_id, capture lifecycle, stable committed text и service pipeline frames -> WAV -> transcription -> optional cleanup.
+- Realtime stable commits теперь записываются через session controller; streaming frames -> WAV -> Whisper orchestration также проходит через него.
+- Recording start/stop/recovery делегируют recorder lifecycle session controller вместо прямого управления AudioRecorder из Tk mixin.
+- Добавлены headless tests start -> frames -> transcription -> commit -> stop, double-start race, stop/restart, failed-start recovery, stop failure и finalizing race.
+- Исправлен latent Architecture 2.3 regression: recording warm-up больше не вызывает удалённый private _windows_missing_cuda_dlls; добавлен public backend_candidates contract.
+- Packaged self-test теперь строит default ApplicationServices и проверяет composition graph без открытия GUI.

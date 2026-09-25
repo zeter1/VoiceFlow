@@ -49,6 +49,13 @@ class AudioRecorderContract(Protocol):
 class TranscriberContract(Protocol):
     active_backend_label: str
 
+    def backend_candidates(
+        self,
+        device_option: str,
+        compute_type_option: str,
+    ) -> list[tuple[str, str]]:
+        ...
+
     def transcribe(
         self,
         wav_path: Path,

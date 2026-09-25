@@ -76,6 +76,23 @@ def run_self_test() -> int:
         checks["app_import"] = False
         errors["app_import"] = f"{type(exc).__name__}: {exc}"
 
+    try:
+        from .composition import build_default_application_services
+        composition = build_default_application_services()
+        checks["application_composition"] = all(
+            item is not None
+            for item in (
+                composition.recorder,
+                composition.transcriber,
+                composition.cleaner,
+                composition.notification_factory,
+                composition.tray_factory,
+            )
+        )
+    except BaseException as exc:
+        checks["application_composition"] = False
+        errors["application_composition"] = f"{type(exc).__name__}: {exc}"
+
     payload = {
         "app": APP_NAME,
         "frozen": bool(getattr(sys, "frozen", False)),

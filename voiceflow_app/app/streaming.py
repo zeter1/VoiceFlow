@@ -31,6 +31,7 @@ from ..diagnostics import (
     log_warning,
 )
 from ..settings import RuntimeSettings
+from .session_controller import SessionTranscriptionRequest
 from ..voice_commands import (
     normalize_voice_command_text,
     split_trailing_voice_control_command,
@@ -79,8 +80,7 @@ class StreamingMixin:
         self.streaming_stop_event = threading.Event()
         self.stream_context_reset_event.clear()
         self.stream_last_frame_index = self.recorder.frames_count()
-        self.stream_inserted_any = False
-        self.stream_inserted_text = ""
+        self.session_controller.reset_commits()
         self.stream_preview_raw_text = ""
         self.stream_preview_clean_text = ""
         self.streaming_thread = threading.Thread(
@@ -449,23 +449,29 @@ class StreamingMixin:
             # forever and no more text was pasted. Keep dictation continuous:
             # bad chunks are logged and skipped below, then the stream advances.
 
-            wav_path = self.recorder.frames_to_wav(frames, prefix="stream_stable_chunk")
-            if wav_path is None:
-                last_frame_index = new_index
-                return
             try:
-                transcribed_raw = self.transcriber.transcribe(
-                    wav_path,
-                    runtime_settings.language,
-                    model_name=streaming_model_name,
-                    quality=self._stream_quality(runtime_settings),
-                    custom_terms=runtime_settings.custom_terms,
-                    use_vad_filter=streaming_vad_filter,
-                    context_text=committed_raw_context[-500:],
-                    device=runtime_settings.inference_device,
-                    compute_type=runtime_settings.compute_type,
-                    streaming=True,
+                transcript = self.session_controller.transcribe_frames(
+                    frames,
+                    SessionTranscriptionRequest(
+                        language=runtime_settings.language,
+                        model_name=streaming_model_name,
+                        quality=self._stream_quality(runtime_settings),
+                        custom_terms=runtime_settings.custom_terms,
+                        use_vad_filter=streaming_vad_filter,
+                        context_text=committed_raw_context[-500:],
+                        device=runtime_settings.inference_device,
+                        compute_type=runtime_settings.compute_type,
+                        streaming=True,
+                        clean_output=False,
+                    ),
+                    prefix="stream_stable_chunk",
+                    session_id=session_id,
                 )
+                if transcript is None:
+                    last_frame_index = new_index
+                    return
+                wav_path = transcript.wav_path
+                transcribed_raw = transcript.raw_text
                 raw = transcribed_raw
                 raw_text_for_end = (raw or "").strip()
                 raw_had_ellipsis = bool(re.search(r"(?:\.{2,}|…)[\s.!?…]*$", raw_text_for_end))
@@ -720,7 +726,7 @@ class StreamingMixin:
         )
 
     def _reset_stream_message_state(self, session_id: Optional[int], reason: str) -> None:
-        self.stream_inserted_text = ""
+        self.session_controller.reset_commits()
         self.stream_context_reset_event.set()
         log_info("Realtime message state reset", session_id=session_id, reason=reason)
 
@@ -772,8 +778,7 @@ class StreamingMixin:
                     commit_meta=commit_meta or {},
                 )
                 if ok:
-                    self.stream_inserted_any = True
-                    self.stream_inserted_text = (self.stream_inserted_text + " " + chunk_text).strip()
+                    self.session_controller.record_commit(chunk_text)
                     if self.recorder.is_recording:
                         # Do not replace the persistent "Идёт запись" toast with
                         # short success popups for every inserted chunk. Logs
@@ -1008,7 +1013,7 @@ class StreamingMixin:
                 if tail:
                     ok = self.paste_text_to_current_target(" " + tail, show_messages=False)
                     if ok:
-                        self.stream_inserted_text = (self.stream_inserted_text + " " + tail).strip()
+                        self.session_controller.record_commit(tail)
                         self.notify(
                             "✅ Стриминг завершён\nДобавлен финальный хвост текста",
                             kind="success",

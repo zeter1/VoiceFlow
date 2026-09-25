@@ -128,7 +128,7 @@ class RecordingMixin:
             except Exception:
                 pass
             try:
-                self.recorder.discard_frames()
+                self.session_controller.recover_idle()
             except Exception:
                 pass
             try:
@@ -167,16 +167,9 @@ class RecordingMixin:
             log_warning("Force-stopping recording state", reason=reason, session_id=self.recording_session_id)
             self.log_state("recording", "force_stop_requested", reason=reason)
             try:
-                self.recorder.stop_discard()
+                self.session_controller.recover_idle()
             except Exception:
-                try:
-                    self.recorder.stop_stream_keep_frames()
-                except Exception:
-                    pass
-                try:
-                    self.recorder.discard_frames()
-                except Exception:
-                    pass
+                pass
             try:
                 self._stop_realtime_streaming(wait=False)
             except Exception:
@@ -269,8 +262,7 @@ class RecordingMixin:
             if not self.microphone_options:
                 raise RuntimeError("Микрофон не выбран: список микрофонов пустой")
             runtime_settings = self._runtime_settings_snapshot()
-            self.recording_session_id += 1
-            session_id = self.recording_session_id
+            session_id = self.session_controller.begin_capture()
             log_info(
                 "Recording start requested",
                 origin=origin,
@@ -283,7 +275,7 @@ class RecordingMixin:
             if origin == "hotkey":
                 self.paste_target = captured_target or get_paste_target()
             self.clear_texts(keep_status=True)
-            self.recorder.start()
+            self.session_controller.activate_capture()
             started = True
             self.record_started_at = time.time()
             self.status_var.set("Идёт запись...")
@@ -318,6 +310,7 @@ class RecordingMixin:
         finally:
             self.recording_start_in_progress = False
             if not started:
+                self.session_controller.abort_start()
                 self.hotkey_ignore_until = max(
                     self.hotkey_ignore_until,
                     time.monotonic() + HOTKEY_DEBOUNCE_SECONDS,
@@ -341,8 +334,8 @@ class RecordingMixin:
             )
             self.processing_origin = origin
             log_info("Recording stop requested", origin=origin, session_id=self.recording_session_id)
-            self.recorder.stop_stream_keep_frames()
             stopped_session_id = self.recording_session_id
+            self.session_controller.stop_capture(discard_frames=True)
             finishing_thread = self.streaming_thread
             self._stop_realtime_streaming(wait=False)
             self.last_wav_path = None
@@ -358,7 +351,6 @@ class RecordingMixin:
             self.pending_hotkey_start_requested = False
             self.pending_hotkey_start_target = None
             self.streaming_thread = None
-            self.recorder.discard_frames()
             self.record_btn.config(text="● Начать запись", state=tk.NORMAL)
             self.status_var.set("Готово")
             self.timer_var.set("00:00")
@@ -434,12 +426,11 @@ class RecordingMixin:
         )
 
     def _cpu_realtime_path_expected(self, runtime_settings: RuntimeSettings) -> bool:
-        missing_cuda_dlls = bool(self.transcriber._windows_missing_cuda_dlls())
-        if runtime_settings.inference_device == "cpu":
-            return True
-        if runtime_settings.inference_device == "cuda":
-            return missing_cuda_dlls
-        return missing_cuda_dlls
+        candidates = self.transcriber.backend_candidates(
+            runtime_settings.inference_device,
+            runtime_settings.compute_type,
+        )
+        return not candidates or candidates[0][0] == "cpu"
 
     def _streaming_model_name(self, runtime_settings: RuntimeSettings) -> str:
         model_name = runtime_settings.whisper_model

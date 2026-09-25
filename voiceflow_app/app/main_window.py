@@ -20,15 +20,12 @@ from ..config import (
     STREAMING_SPEED_OPTIONS,
     WHISPER_MODEL_OPTIONS,
 )
+from ..composition import ApplicationServices, build_default_application_services
 from ..diagnostics import log_info
 from ..hotkey_config import pretty_hotkey
 from ..settings import SettingsStore
 from ..windows import PasteTarget, is_windows_startup_enabled
-from ..services.audio import AudioRecorder
-from ..services.text_cleaner import LocalTextCleaner
-from ..services.transcription import LocalTranscriber
-from ..ui.notifications import NotificationManager
-from ..ui.tray import TrayManager
+from .session_controller import HeadlessSessionController
 from .actions import ActionsMixin
 from .controls import ControlsMixin
 from .hotkeys import HotkeyMixin
@@ -45,7 +42,19 @@ class VoiceFlowOfflineApp(
     StreamingMixin,
     ActionsMixin,
 ):
-    def __init__(self, root: tk.Tk):
+    @property
+    def recording_session_id(self) -> int:
+        return self.session_controller.session_id
+
+    @property
+    def stream_inserted_text(self) -> str:
+        return self.session_controller.committed_text
+
+    @property
+    def stream_inserted_any(self) -> bool:
+        return self.session_controller.inserted_any
+
+    def __init__(self, root: tk.Tk, *, services: Optional[ApplicationServices] = None):
         self.root = root
         self.root.title(APP_NAME)
         self.root.geometry("980x780")
@@ -78,13 +87,19 @@ class VoiceFlowOfflineApp(
                 "settings_path": str(SETTINGS_PATH),
             },
         )
-        self.recorder = AudioRecorder()
-        self.transcriber = LocalTranscriber()
-        self.cleaner = LocalTextCleaner()
-        self.notifications = NotificationManager(root)
+        self.services = services or build_default_application_services()
+        self.session_controller = HeadlessSessionController(
+            self.services.recorder,
+            self.services.transcriber,
+            self.services.cleaner,
+        )
+        self.recorder = self.services.recorder
+        self.transcriber = self.services.transcriber
+        self.cleaner = self.services.cleaner
+        self.notifications = self.services.notification_factory(root)
         self._load_notification_position_from_settings()
         self.notifications.on_position_changed = self._on_notification_position_changed
-        self.tray = TrayManager(self)
+        self.tray = self.services.tray_factory(self)
         self.tray_started = False
         self.worker_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self.last_wav_path: Optional[Path] = None
@@ -97,14 +112,11 @@ class VoiceFlowOfflineApp(
         self.processing_origin = "main"
         self.last_result_ready = False
         self.paste_target: Optional[PasteTarget] = None
-        self.recording_session_id = 0
         self.finalizing_recording = False
         self.streaming_stop_event = threading.Event()
         self.stream_context_reset_event = threading.Event()
         self.streaming_thread: Optional[threading.Thread] = None
         self.stream_last_frame_index = 0
-        self.stream_inserted_any = False
-        self.stream_inserted_text = ""
         self.stream_preview_raw_text = ""
         self.stream_preview_clean_text = ""
         self.hotkey_entry_capture_active = False

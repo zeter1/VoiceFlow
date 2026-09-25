@@ -41,6 +41,9 @@ class LocalTranscriber:
     def _normalize_model_name(self, model_name: str) -> str:
         return model_name if model_name in WHISPER_MODEL_OPTIONS else LOCAL_WHISPER_MODEL
 
+    def backend_candidates(self, device_option: str, compute_type_option: str) -> list[tuple[str, str]]:
+        return self._device_compute_candidates(device_option, compute_type_option)
+
     def _device_compute_candidates(self, device_option: str, compute_type_option: str) -> list[tuple[str, str]]:
         plan = self._backend_runtime.plan_candidates(device_option, compute_type_option)
         if plan.missing_runtime_dlls:

@@ -11,6 +11,7 @@ PACKAGE = ROOT / "voiceflow_app"
 
 EXPECTED_MODULES = {
     "runtime.py",
+    "composition.py",
     "config.py",
     "dependencies.py",
     "audio_devices.py",
@@ -33,6 +34,8 @@ EXPECTED_MODULES = {
     "ui/notifications.py",
     "ui/tray.py",
     "app/main_window.py",
+    "app/ports.py",
+    "app/session_controller.py",
     "app/ui.py",
     "app/controls.py",
     "app/hotkeys.py",
@@ -161,6 +164,21 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertNotIn("find_windows_dll", source)
         self.assertNotIn("subprocess.run", source)
         self.assertIn("CudaRuntimeProbe", source)
+
+    def test_composition_module_has_no_eager_concrete_service_imports(self) -> None:
+        path = PACKAGE / "composition.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        eager = []
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module.endswith(("services.audio", "services.transcription", "services.text_cleaner", "ui.notifications", "ui.tray")):
+                    eager.append(node.module)
+        self.assertFalse(eager, f"Composition defaults must stay lazy for headless imports: {eager}")
+
+    def test_recording_uses_public_transcriber_backend_contract(self) -> None:
+        source = (PACKAGE / "app" / "recording.py").read_text(encoding="utf-8")
+        self.assertNotIn("_windows_missing_cuda_dlls", source)
+        self.assertIn("backend_candidates(", source)
 
     def test_source_mode_runtime_data_stays_at_repository_root(self) -> None:
         source = (PACKAGE / "config.py").read_text(encoding="utf-8")

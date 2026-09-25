@@ -1,16 +1,16 @@
 # Изменения Windows-сборки
 
-## Architecture 2.3 — Service Contracts & Dependency Inversion
+## Architecture 2.4 — Application Ports & Headless Session Tests
 
-- Перечисление микрофонов отделено от общего dependency loader и теперь имеет тестируемый audio adapter.
-- LocalTranscriber больше не занимается прямым поиском CUDA DLL и запуском environment preflight: это вынесено в отдельный CUDA runtime adapter.
-- Для transcriber добавлены injection seams backend_runtime/model_factory, что снижает coupling и позволяет проверять backend policy без GPU.
-- Windows autostart registry и foreground/paste code физически разделены на независимые adapters; старый windows import path сохранён для совместимости.
-- Для AudioRecorder, LocalTranscriber и LocalTextCleaner добавлены явные Protocol contracts.
-- Добавлены offline regression tests, не требующие микрофона, GPU, Whisper-модели или Windows Registry.
+- VoiceFlowOfflineApp получает сервисы через injectable ApplicationServices вместо прямого создания recorder/transcriber/cleaner/notification/tray implementations.
+- Добавлен headless session controller для capture lifecycle, session identity и realtime committed text.
+- Realtime frames → temporary WAV → Whisper path и stable commit state теперь имеют отдельный application-layer seam, тестируемый без GUI.
+- Добавлены regression tests для полного headless сценария start → frames → transcription → stable commit → stop, повторного старта, race/finalizing и failure/recovery.
+- Исправлена скрытая warm-up проблема после Architecture 2.3: runtime больше не обращается к удалённому private CUDA helper.
+- Packaged self-test проверяет новый composition graph до запуска Tk GUI.
 
 ## Проверка сборки
 
 GitHub Actions выполняет compile, offline regression/architecture tests, PyInstaller build, bounded packaged VoiceFlow.exe --self-test, ZIP/SHA-256 и публикацию prerelease.
 
-Реальный микрофон, CUDA inference, global hotkey, tray и вставка текста в сторонние Windows-приложения требуют отдельной интерактивной runtime-проверки.
+Реальный микрофон, CUDA inference, global hotkey, tray, уведомления и вставка текста в сторонние Windows-приложения требуют отдельной интерактивной runtime-проверки.
