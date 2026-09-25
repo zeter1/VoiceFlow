@@ -131,3 +131,8 @@
 - Removed dead pre-realtime final-result pipeline: unused _process_audio_worker, RESULT/ERROR queue kinds/dispatch branches and unused asynchronous stream-finish queue finalizer.
 - app/streaming.py no longer imports pyautogui, Windows target helpers or worker-message producers for legacy finalization.
 - Added fake-backed tests for exact paste forwarding, failed-paste commit safety, voice-command reset metadata, whitespace voice payloads, clipboard fallback retention and key/hotkey/sequence delivery.
+
+### Architecture 2.8 corrective compile fix
+
+- Removed a duplicated stream_warning branch header left by mechanical dead-branch extraction; the first 2.8 CI run stopped at compile with IndentationError before tests or packaging.
+- No runtime behavior change beyond restoring valid worker-dispatch syntax.

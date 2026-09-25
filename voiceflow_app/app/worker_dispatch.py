@@ -164,7 +164,6 @@ class WorkerDispatchMixin:
                 return
 
         elif msg_type == "stream_warning":
-        elif msg_type == "stream_warning":
             if isinstance(payload, StreamWarningPayload):
                 session_id, _exc = payload.session_id, payload.error
             else:

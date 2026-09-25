@@ -9,6 +9,11 @@
 - Добавлены fake-backed regression tests для exact paste payload, failed delivery, whitespace voice commands, key/hotkey/sequence actions и reset-message-context metadata.
 - Удалён подтверждённо мёртвый legacy final-result путь (`_process_audio_worker`, RESULT/ERROR queue handling и старый async finish-finalizer), который не имел вызывающих production paths после перехода на realtime-only stop.
 
+### Corrective compile fix
+
+- Исправлен дублированный `elif stream_warning`, который остановил первый Architecture 2.8 CI run на compile до запуска тестов.
+- Runtime behavior не менялся; повторная сборка проходит полный validation ladder.
+
 ## Проверка сборки
 
 GitHub Actions выполняет compile, полный offline regression/architecture suite, PyInstaller build, packaged `VoiceFlow.exe --self-test`, ZIP/SHA-256 и публикацию prerelease.
