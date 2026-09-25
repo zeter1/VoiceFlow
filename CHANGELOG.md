@@ -9,3 +9,15 @@
 - CI теперь компилирует весь package и проверяет structural repository contracts.
 - Добавлены AGENTS.md, AI_CONTEXT, DEVELOPMENT и обновлённая архитектурная карта.
 - Для проходки запускается обновление Windows portable binary и packaged self-test.
+
+## 2026-09-25 — Architecture 2.0: Testable Realtime Core
+
+- Realtime dedupe/punctuation/final-tail/voice-command decisions вынесены в независимый voiceflow_app/core/realtime.py.
+- Recording state classification вынесена в core/recording_state.py.
+- Windows hotkey edge/debounce state machine вынесена в core/hotkey_state.py и подключена к polling/handler runtime.
+- Добавлены независимые regression tests без Tkinter, микрофона и Whisper.
+- app/main_window.py, app/recording.py и app/hotkeys.py больше не используют wildcard context import.
+- Добавлены architecture guards, запрещающие core импортировать runtime/context/Tkinter и возвращать wildcard в новые state owners.
+- Пользовательская образовательная документация перенесена из корня docs/ в docs/user-guide/.
+- Техническая документация и AI-навигация обновлены под новые boundaries.
+- Windows portable binary пересобирается и проходит packaged self-test.

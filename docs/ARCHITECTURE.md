@@ -14,6 +14,16 @@ voiceflow_app/runtime.py содержит пути logs/settings, structured dia
 
 При source-запуске APP_DIR остаётся корнем проекта. При frozen-запуске — каталогом VoiceFlow.exe.
 
+## Pure core
+
+voiceflow_app/core/realtime.py содержит deterministic решения dedupe, bad-chunk rejection, punctuation, continuation casing, final-tail и trailing voice-command split. Он не импортирует Tkinter, device/Whisper runtime или context.py.
+
+voiceflow_app/core/recording_state.py классифицирует recording snapshot и решает, когда idle state является stale/recoverable.
+
+voiceflow_app/core/hotkey_state.py хранит edge state machine физического нажатия/release и action decision для debounce/start/stop/finalizing.
+
+Эти модули являются preferred unit-test seam: сначала меняй decision + regression test, затем orchestration.
+
 ## Services
 
 services/audio.py — microphone capture и frame lifecycle.
@@ -31,8 +41,8 @@ ui/notifications.py и ui/tray.py отвечают только за presentatio
 app/main_window.py собирает VoiceFlowOfflineApp.
 app/ui.py — widgets/state/notifications.
 app/controls.py — microphone/hotkey editor.
-app/hotkeys.py — registration, Windows polling, debounce and dispatch.
-app/recording.py — idle repair, start/stop, runtime snapshot, warm-up.
+app/hotkeys.py — Windows polling/dispatch; edge/debounce decisions делегируются core/hotkey_state.py.
+app/recording.py — side effects start/stop/warm-up; state classification делегируется core/recording_state.py.
 app/streaming.py — chunk scheduling, speech stats, dedupe, realtime worker, queue and voice commands.
 app/actions.py — copy/paste, settings, window lifecycle and shutdown.
 
@@ -70,3 +80,7 @@ Prefer pure/testable helpers for parsing/dedupe/state decisions.
 Before cross-module state changes identify owner, invariant, failure semantics and verification route.
 
 See also: ../AGENTS.md, AI_CONTEXT.md, DEVELOPMENT.md, ../SECURITY.md.
+
+## Transitional compatibility
+
+context.py больше не используется main_window/recording/hotkeys, но пока остаётся bridge для нескольких legacy mixin-модулей. Удаление делается только после поэтапной замены wildcard imports и package/runtime proof.

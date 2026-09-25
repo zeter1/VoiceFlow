@@ -6,7 +6,18 @@ makes navigation, review and future extraction safer.
 
 from __future__ import annotations
 
-from ..context import *  # noqa: F401,F403 - compatibility surface for extracted methods
+from ..context import *  # noqa: F401,F403 - transitional compatibility for orchestration only
+from ..core.realtime import (
+    dedupe_stream_chunk as core_dedupe_stream_chunk,
+    get_missing_final_tail as core_get_missing_final_tail,
+    is_bad_stream_text as core_is_bad_stream_text,
+    lowercase_continuation_start as core_lowercase_continuation_start,
+    normalize_stream_words as core_normalize_stream_words,
+    prepare_stream_chunk_for_paste as core_prepare_stream_chunk_for_paste,
+    soften_open_stream_text as core_soften_open_stream_text,
+    split_stream_voice_command as core_split_stream_voice_command,
+    stream_has_sentence_end as core_stream_has_sentence_end,
+)
 
 
 class StreamingMixin:
@@ -200,82 +211,20 @@ class StreamingMixin:
         return runtime_settings.recognition_quality
 
     def _normalize_stream_words(self, text: str) -> list[str]:
-        cleaned = re.sub(r"[^0-9a-zA-Zа-яА-ЯёЁ]+", " ", text.lower())
-        return [w for w in cleaned.split() if w]
+        return core_normalize_stream_words(text)
 
     def _dedupe_stream_chunk(self, previous_text: str, new_text: str) -> str:
-        """Remove repeated prefix from a stream chunk using token overlap.
-
-        Voice-control commands are allowed to repeat. Without this exception,
-        a command like "новая строка" can work once and then be swallowed as
-        an already-seen duplicate later in the same dictation session.
-        """
-        new_text = re.sub(r"\s+", " ", new_text or "").strip()
-        previous_text = re.sub(r"\s+", " ", previous_text or "").strip()
-        if not new_text:
-            return ""
-        if voice_control_command_from_text(new_text):
-            return new_text
-        if not previous_text:
-            return new_text
-        prev_words = self._normalize_stream_words(previous_text)
-        new_words = self._normalize_stream_words(new_text)
-        if not prev_words or not new_words:
-            return new_text
-        max_overlap = min(14, len(prev_words), len(new_words))
-        best = 0
-        for size in range(max_overlap, 0, -1):
-            if prev_words[-size:] == new_words[:size]:
-                best = size
-                break
-        if best <= 0:
-            normalized_prev = " ".join(prev_words)
-            normalized_new = " ".join(new_words)
-            if normalized_new and normalized_new in normalized_prev:
-                return ""
-            return new_text
-        original_tokens = new_text.split()
-        if best >= len(original_tokens):
-            return ""
-        return " ".join(original_tokens[best:]).strip()
+        return core_dedupe_stream_chunk(
+            previous_text,
+            new_text,
+            is_voice_command=lambda text: voice_control_command_from_text(text) is not None,
+        )
 
     def _is_bad_stream_text(self, text: str) -> bool:
-        normalized = re.sub(r"\s+", " ", (text or "").strip().lower())
-        if not normalized or len(normalized) < 2:
-            return True
-        punctuation_only = re.sub(r"\s+", "", normalized)
-        # faster-whisper can hallucinate chunks like ".. .." or "..." during
-        # silence/noise. They were cleaned into "..." / "....." and inserted
-        # into the target field. Keep spoken punctuation commands as words
-        # ("точка", "знак вопроса", "знак внимания") but reject punctuation-only chunks.
-        if re.fullmatch(r"[\.。…]+", punctuation_only) or re.fullmatch(r"[\.,;:!?…\-—]+", punctuation_only):
-            return True
-        bad_phrases = [
-            "спасибо за просмотр", "спасибо за внимание", "продолжение следует",
-            "субтитры сделал", "субтитры создал", "субтитры создала", "субтитры создавал",
-            "субтитры подготовил", "редактор субтитров", "подписывайтесь", "смотрите далее",
-            "thank you for watching", "subtitles by", "captioned by", "dima torzok", "dimatorzok",
-            "дима торжок", "диматорзок", "субтитры dima", "субтитры dimatorzok",
-        ]
-        if any(phrase in normalized for phrase in bad_phrases):
-            return True
-        words = normalized.split()
-        if len(words) >= 4 and len(set(words)) <= 2:
-            return True
-        return False
+        return core_is_bad_stream_text(text)
 
     def _soften_open_stream_text(self, text: str) -> str:
-        text = re.sub(r"[ \t\r\f\v]+", " ", text or "").strip()
-        if not text:
-            return ""
-        # If a realtime chunk was cut mid-phrase, punctuation at the end is
-        # usually Whisper/cleanup noise. The old code removed only one dot,
-        # producing broken tails like "Сейчас.." and "с.?". Remove the whole
-        # dangling punctuation run so the next chunk can continue the sentence.
-        if not re.search(r"(?i)\b(?:т\.д|т\.п|и т\.д|и т\.п)\.$", text):
-            text = re.sub(r"(?:\s*[.!?…]+)+\s*$", "", text).rstrip()
-            text = re.sub(r"\s+[,;:]\s*$", "", text).rstrip()
-        return text
+        return core_soften_open_stream_text(text)
 
     def _clean_stream_chunk_for_commit(self, raw_text: str, runtime_settings: RuntimeSettings, keep_sentence_end: bool = True) -> tuple[str, str]:
         raw_text = re.sub(r"\s+", " ", raw_text or "").strip()
@@ -302,24 +251,10 @@ class StreamingMixin:
         return raw_text, cleaned
 
     def _stream_has_sentence_end(self, text: str) -> bool:
-        return bool(re.search(r"[.!?…][\"'»)\]]*$", (text or "").strip()))
+        return core_stream_has_sentence_end(text)
 
     def _lowercase_continuation_start(self, text: str) -> str:
-        if not text:
-            return text
-        proper_starts = {
-            "ChatGPT", "OpenAI", "Telegram", "WhatsApp", "Gmail", "Google", "Python",
-            "JavaScript", "TypeScript", "PowerShell", "Windows", "Whisper", "CUDA",
-        }
-        first_word = re.match(r"^[\"'«(]*([A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9_+-]*)", text)
-        if first_word and first_word.group(1) in proper_starts:
-            return text
-        return re.sub(
-            r"^([\"'«(]*)([А-ЯЁA-Z])([а-яёa-z])",
-            lambda m: m.group(1) + m.group(2).lower() + m.group(3),
-            text,
-            count=1,
-        )
+        return core_lowercase_continuation_start(text)
 
     def _prepare_stream_chunk_for_paste(
         self,
@@ -328,76 +263,26 @@ class StreamingMixin:
         commit_meta: Optional[dict[str, object]] = None,
         raw_text: str = "",
     ) -> str:
-        chunk_text = re.sub(r"[ \t\r\f\v]+", " ", chunk_text or "").strip()
-        if not chunk_text:
-            return ""
-
-        meta = commit_meta or {}
-        sentence_pause = bool(meta.get("sentence_pause"))
-        pause_seconds = float(meta.get("pause_seconds") or 0.0)
-        whisper_sentence_end = bool(meta.get("whisper_sentence_end"))
-        raw_text = raw_text or str(meta.get("raw_text") or "")
-
-        # Preserve/add final punctuation when we have a real reason for it:
-        # 1) the user made a clear pause in speech; 2) Whisper confidently ended
-        # the phrase with .?! . This fixes logs where raw text had periods but
-        # cleaned realtime text inserted every phrase without a dot.
-        raw_end_match = re.search(r"([.!?])(?:[\"'»\)\]]*)\s*$", raw_text.strip())
-        if raw_end_match and not re.search(r"(?:\.{2,}|…)[\s.!?…]*$", raw_text.strip()):
-            whisper_sentence_end = True
-
-        if sentence_pause and not self._stream_has_sentence_end(chunk_text):
-            chunk_text = re.sub(r"[,;:]\s*$", "", chunk_text).rstrip() + "."
-        elif whisper_sentence_end and not self._stream_has_sentence_end(chunk_text):
-            end_char = raw_end_match.group(1) if raw_end_match else "."
-            chunk_text = re.sub(r"[,;:]\s*$", "", chunk_text).rstrip() + end_char
-        elif not sentence_pause and not whisper_sentence_end and meta.get("forced_commit"):
-            # Forced max-duration chunks can be cut mid-sentence. Do not invent
-            # a dot unless there was a pause or Whisper itself ended the phrase.
-            chunk_text = self._soften_open_stream_text(chunk_text)
-
-        if previous_text and not self._stream_has_sentence_end(previous_text):
-            # If the previous inserted chunk did not end as a sentence, this is
-            # a continuation unless the current chunk was explicitly punctuated
-            # by a strong pause/Whisper.
-            if not sentence_pause:
-                chunk_text = self._lowercase_continuation_start(chunk_text)
+        decision = core_prepare_stream_chunk_for_paste(
+            previous_text,
+            chunk_text,
+            commit_meta=commit_meta,
+            raw_text=raw_text,
+        )
         log_category(
             "streaming",
             "pause_punctuation_decision",
-            chunk_preview=chunk_text[:160],
-            pause_seconds=round(pause_seconds, 3),
-            sentence_pause=sentence_pause,
-            whisper_sentence_end=whisper_sentence_end,
-            previous_had_sentence_end=self._stream_has_sentence_end(previous_text),
-            forced_commit=bool(meta.get("forced_commit")),
+            chunk_preview=decision.text[:160],
+            pause_seconds=round(decision.pause_seconds, 3),
+            sentence_pause=decision.sentence_pause,
+            whisper_sentence_end=decision.whisper_sentence_end,
+            previous_had_sentence_end=decision.previous_had_sentence_end,
+            forced_commit=decision.forced_commit,
         )
-        return chunk_text
+        return decision.text
 
     def _get_missing_final_tail(self, already_inserted: str, final_text: str) -> str:
-        """Return only the not-yet-inserted final tail after realtime paste."""
-        already_words = self._normalize_stream_words(already_inserted)
-        final_words = self._normalize_stream_words(final_text)
-        if not final_words:
-            return ""
-        if not already_words:
-            return final_text.strip()
-        max_overlap = min(len(already_words), len(final_words), 28)
-        best = 0
-        for size in range(max_overlap, 1, -1):
-            suffix = already_words[-size:]
-            for start_pos in range(0, min(10, max(1, len(final_words) - size + 1))):
-                if final_words[start_pos:start_pos + size] == suffix:
-                    best = start_pos + size
-                    break
-            if best:
-                break
-        if best <= 0:
-            return ""
-        original_tokens = final_text.split()
-        if best >= len(original_tokens):
-            return ""
-        return " ".join(original_tokens[best:]).strip()
+        return core_get_missing_final_tail(already_inserted, final_text)
 
     def _realtime_stream_worker(
         self,
@@ -797,16 +682,12 @@ class StreamingMixin:
             self.worker_queue.put(("error", exc))
 
     def _split_stream_voice_command(self, raw: str, cleaned: str) -> tuple[str, str, Optional[dict[str, object]]]:
-        raw_before, raw_command = split_trailing_voice_control_command(raw)
-        cleaned_before, cleaned_command = split_trailing_voice_control_command(cleaned)
-        command = cleaned_command or raw_command
-        if command is None:
-            return raw, cleaned, None
-        if raw_command is None and normalize_voice_command_text(raw) == normalize_voice_command_text(cleaned):
-            raw_before = cleaned_before
-        if cleaned_command is None:
-            cleaned_before = raw_before
-        return raw_before.strip(), cleaned_before.strip(), command
+        return core_split_stream_voice_command(
+            raw,
+            cleaned,
+            splitter=split_trailing_voice_control_command,
+            normalizer=normalize_voice_command_text,
+        )
 
     def _reset_stream_message_state(self, session_id: Optional[int], reason: str) -> None:
         self.stream_inserted_text = ""

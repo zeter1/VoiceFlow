@@ -8,7 +8,10 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 
 ## Физическая карта
 
-- runtime.py: settings, diagnostics, Windows/hotkey/command helpers.
+- runtime.py: settings, diagnostics and Windows adapters.
+- core/realtime.py: pure realtime text decisions.
+- core/recording_state.py: pure recording state/repair classification.
+- core/hotkey_state.py: pure hotkey edge/debounce decisions.
 - services/audio.py: microphone capture.
 - services/transcription.py: model lifecycle, CPU/CUDA, inference.
 - services/text_cleaner.py: punctuation/fillers/grammar/formatting.
@@ -16,7 +19,7 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 - app/controls.py: microphone/hotkey controls.
 - app/hotkeys.py: registration/polling/debounce/dispatch.
 - app/recording.py: recording state transitions and warm-up.
-- app/streaming.py: critical realtime chunk/dedupe/queue/command logic.
+- app/streaming.py: realtime worker/queue/orchestration; dedupe/punctuation/tail decisions delegate to core/realtime.py.
 - app/actions.py: copy/paste/settings/shutdown.
 - ui/notifications.py and ui/tray.py: UI infrastructure.
 - entrypoint.py: startup + packaged self-test.
@@ -68,3 +71,7 @@ Green package CI does NOT prove a real microphone, a downloaded Whisper model, u
 ## AI completion handoff
 
 Return: source commit -> actual delta -> checks PASS/FAIL -> NOT VERIFIED -> residual risk/next engineering stage.
+
+## Educational documentation
+
+User-facing guides are isolated under user-guide/. Technical/AI work should start from AGENTS.md, ARCHITECTURE.md, AI_CONTEXT.md and DEVELOPMENT.md rather than scanning tutorial files.

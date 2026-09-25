@@ -6,7 +6,42 @@ makes navigation, review and future extraction safer.
 
 from __future__ import annotations
 
-from ..context import *  # noqa: F401,F403 - compatibility surface for extracted methods
+import ctypes
+import re
+import threading
+import time
+import tkinter as tk
+from tkinter import messagebox, ttk
+from typing import Optional
+
+from ..core.hotkey_state import (
+    HotkeyEdgeState,
+    advance_hotkey_edge,
+    decide_hotkey_action,
+)
+from ..runtime import (
+    APP_NAME,
+    HOTKEY_DEBOUNCE_SECONDS,
+    HOTKEY_START_GUARD_SECONDS,
+    IS_WINDOWS,
+    PasteTarget,
+    WINDOWS_HOTKEY_HEARTBEAT_SECONDS,
+    WINDOWS_HOTKEY_MIN_EDGE_GAP_SECONDS,
+    WINDOWS_HOTKEY_POLL_INTERVAL_SECONDS,
+    WINDOWS_HOTKEY_RELEASE_STABLE_SECONDS,
+    WINDOWS_HOTKEY_STUCK_DOWN_LOG_SECONDS,
+    get_paste_target,
+    hotkey_to_windows_vk_options,
+    keyboard,
+    log_category,
+    log_exception,
+    log_info,
+    log_warning,
+    normalize_hotkey,
+    pretty_hotkey,
+    repair_unreliable_modifier_only_hotkey,
+    summarize_windows_hotkey_state,
+)
 
 
 class HotkeyMixin:
@@ -173,10 +208,7 @@ class HotkeyMixin:
 
         def poll_worker() -> None:
             user32 = ctypes.windll.user32
-            was_down = False
-            press_started_at: Optional[float] = None
-            release_started_at: Optional[float] = None
-            last_press_at = 0.0
+            edge_state = HotkeyEdgeState()
             last_heartbeat_at = 0.0
             last_stuck_log_at = 0.0
             polls_total = 0
@@ -212,74 +244,108 @@ class HotkeyMixin:
                             hotkey=hotkey,
                             generation=generation,
                             all_down=all_down,
-                            was_down=was_down,
+                            was_down=edge_state.is_down,
                             polls_total=polls_total,
                             polls_down=polls_down,
                             polls_up=polls_up,
                             key_states=key_states,
                         )
 
-                    if all_down:
-                        release_started_at = None
-                        if not was_down:
-                            edge_gap = now - last_press_at if last_press_at else None
-                            # Do not re-arm on micro flickers. A real second F9 press normally
-                            # happens well after this gap, while bounce/auto-repeat happens faster.
-                            if edge_gap is not None and edge_gap < WINDOWS_HOTKEY_MIN_EDGE_GAP_SECONDS:
-                                self.log_hotkey_trace(
-                                    "poll_press_ignored_too_close_to_previous_edge",
-                                    hotkey=hotkey,
-                                    generation=generation,
-                                    edge_gap=round(edge_gap, 3),
-                                    key_states=key_states,
-                                )
-                                was_down = True
-                                press_started_at = now
-                                continue
+                    transition = advance_hotkey_edge(
+                        edge_state,
+                        all_down=all_down,
+                        now=now,
+                        min_edge_gap_seconds=WINDOWS_HOTKEY_MIN_EDGE_GAP_SECONDS,
+                        release_stable_seconds=WINDOWS_HOTKEY_RELEASE_STABLE_SECONDS,
+                    )
+                    edge_state = transition.state
 
-                            was_down = True
-                            press_started_at = now
-                            last_press_at = now
-                            self.hotkey_last_poll_press_at = now
-                            target = get_paste_target()
-                            log_info(
-                                "Windows hotkey polling detected press",
-                                hotkey=hotkey,
-                                is_recording=self.recorder.is_recording,
-                                finalizing=self.finalizing_recording,
-                            )
-                            log_category(
-                                "hotkeys",
-                                "windows_poll_detected_press",
-                                hotkey=hotkey,
-                                is_recording=bool(self.recorder.is_recording),
-                                finalizing=bool(self.finalizing_recording),
-                                recording_start_in_progress=bool(self.recording_start_in_progress),
-                                pending_hotkey_start=bool(self.pending_hotkey_start_requested),
-                                hotkey_ignore_remaining=max(0.0, round(self.hotkey_ignore_until - time.monotonic(), 3)),
-                            )
+                    if transition.event == "ignored_press_too_close":
+                        self.log_hotkey_trace(
+                            "poll_press_ignored_too_close_to_previous_edge",
+                            hotkey=hotkey,
+                            generation=generation,
+                            edge_gap=round(transition.edge_gap or 0.0, 3),
+                            key_states=key_states,
+                        )
+                        continue
+
+                    if transition.event == "press":
+                        self.hotkey_last_poll_press_at = now
+                        target = get_paste_target()
+                        log_info(
+                            "Windows hotkey polling detected press",
+                            hotkey=hotkey,
+                            is_recording=self.recorder.is_recording,
+                            finalizing=self.finalizing_recording,
+                        )
+                        log_category(
+                            "hotkeys",
+                            "windows_poll_detected_press",
+                            hotkey=hotkey,
+                            is_recording=bool(self.recorder.is_recording),
+                            finalizing=bool(self.finalizing_recording),
+                            recording_start_in_progress=bool(self.recording_start_in_progress),
+                            pending_hotkey_start=bool(self.pending_hotkey_start_requested),
+                            hotkey_ignore_remaining=max(0.0, round(self.hotkey_ignore_until - time.monotonic(), 3)),
+                        )
+                        self.log_hotkey_trace(
+                            "poll_press_detected",
+                            hotkey=hotkey,
+                            generation=generation,
+                            key_states=key_states,
+                            target=self._hotkey_target_snapshot(target),
+                            edge_gap=round(transition.edge_gap, 3) if transition.edge_gap is not None else None,
+                            will_schedule_handle=True,
+                        )
+                        try:
+                            self.worker_queue.put(("global_hotkey_pressed", (hotkey, target, generation)))
                             self.log_hotkey_trace(
-                                "poll_press_detected",
+                                "poll_press_queued_for_main_thread",
                                 hotkey=hotkey,
                                 generation=generation,
-                                key_states=key_states,
                                 target=self._hotkey_target_snapshot(target),
-                                edge_gap=round(edge_gap, 3) if edge_gap is not None else None,
-                                will_schedule_handle=True,
                             )
-                            try:
-                                # Do not call Tk directly from the polling thread.
-                                # Queue the event and let _poll_worker_queue handle it
-                                # on the main Tk thread. This also fixes cases where
-                                # F9 is detected in logs but the actual toggle is lost.
-                                self.worker_queue.put(("global_hotkey_pressed", (hotkey, target, generation)))
-                                self.log_hotkey_trace(
-                                    "poll_press_queued_for_main_thread",
-                                    hotkey=hotkey,
-                                    generation=generation,
-                                    target=self._hotkey_target_snapshot(target),
-                                )
-                            except Exception as exc:
+                        except Exception as exc:
+                            self.log_hotkey_trace(
+                                "poll_press_queue_failed",
+                                hotkey=hotkey,
+                                generation=generation,
+                                error=str(exc),
+                            )
+                            break
+
+                    elif transition.event == "held":
+                        held_for = transition.held_for or 0.0
+                        if held_for >= WINDOWS_HOTKEY_STUCK_DOWN_LOG_SECONDS and now - last_stuck_log_at >= WINDOWS_HOTKEY_STUCK_DOWN_LOG_SECONDS:
+                            last_stuck_log_at = now
+                            self.log_hotkey_trace(
+                                "poll_key_still_down",
+                                hotkey=hotkey,
+                                generation=generation,
+                                held_for=round(held_for, 3),
+                                key_states=key_states,
+                            )
+
+                    elif transition.event == "release_started":
+                        self.log_hotkey_trace(
+                            "poll_release_started",
+                            hotkey=hotkey,
+                            generation=generation,
+                            held_for=round(transition.held_for, 3) if transition.held_for is not None else None,
+                            key_states=key_states,
+                        )
+
+                    elif transition.event == "rearmed":
+                        self.log_hotkey_trace(
+                            "poll_release_confirmed_rearmed",
+                            hotkey=hotkey,
+                            generation=generation,
+                            release_stable_for=round(transition.release_stable_for or 0.0, 3),
+                            held_for=round(transition.held_for, 3) if transition.held_for is not None else None,
+                            key_states=key_states,
+                        )
+                except Exception as exc:
                                 self.log_hotkey_trace(
                                     "poll_press_queue_failed",
                                     hotkey=hotkey,
@@ -402,10 +468,16 @@ class HotkeyMixin:
             self.log_state("hotkeys", "stale_hotkey_capture_released", hotkey=hotkey, target=target_snapshot)
             self.log_hotkey_trace("handle_stale_hotkey_capture_released", hotkey=hotkey, target=target_snapshot)
 
-        # Debounce must block duplicate callbacks from the same physical
-        # key press, even if the first callback changed the state to recording.
-        if now < self.hotkey_ignore_until:
-            remaining = round(self.hotkey_ignore_until - now, 3)
+        hotkey_decision = decide_hotkey_action(
+            now=now,
+            ignore_until=self.hotkey_ignore_until,
+            start_in_progress=bool(self.recording_start_in_progress),
+            is_recording=bool(self.recorder.is_recording),
+            finalizing=bool(self.finalizing_recording),
+        )
+
+        if hotkey_decision.action == "ignore_debounce":
+            remaining = round(hotkey_decision.ignore_for_seconds, 3)
             log_info(
                 "Global hotkey ignored by debounce",
                 hotkey=hotkey,
@@ -430,7 +502,7 @@ class HotkeyMixin:
             )
             return
 
-        if self.recording_start_in_progress:
+        if hotkey_decision.action == "ignore_start_in_progress":
             self.hotkey_ignore_until = now + HOTKEY_START_GUARD_SECONDS
             log_info("Global hotkey ignored while recording start is in progress", hotkey=hotkey)
             self.log_state("hotkeys", "ignored_start_in_progress", hotkey=hotkey, target=target_snapshot)
@@ -442,7 +514,7 @@ class HotkeyMixin:
             )
             return
 
-        decision = "stop_recording" if self.recorder.is_recording else ("queue_start_after_finalizing" if self.finalizing_recording else "start_recording")
+        decision = hotkey_decision.action
         self.hotkey_ignore_until = now + HOTKEY_DEBOUNCE_SECONDS
         self.hotkey_last_accepted_at = now
         self.log_state("hotkeys", "accepted", hotkey=hotkey, target=target_snapshot, decision=decision)
@@ -454,6 +526,7 @@ class HotkeyMixin:
             new_ignore_until=round(self.hotkey_ignore_until, 6),
             debounce_seconds=HOTKEY_DEBOUNCE_SECONDS,
         )
+        self.toggle_recording("hotkey", target)
         self.toggle_recording("hotkey", target)
 
     def set_hotkey_preset(self, hotkey: str) -> None:

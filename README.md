@@ -186,6 +186,7 @@ CI выполняет syntax/compile и offline repository-contract regression t
 ## Документация и поддержка
 
 - [Архитектура VoiceFlow](docs/ARCHITECTURE.md)
+- [Пользовательские и обучающие инструкции](docs/user-guide/README.md)
 - [Карта проекта для AI/Codex](docs/AI_CONTEXT.md)
 - [Разработка и проверка](docs/DEVELOPMENT.md)
 - [Repo-инструкции для AI-агентов](AGENTS.md)

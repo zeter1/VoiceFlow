@@ -11,7 +11,10 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 ## Fast map
 
 - voiceflow.py — thin compatibility launcher only.
-- voiceflow_app/runtime.py — constants, paths, diagnostics, settings, Windows helpers, hotkey/voice-command parsing.
+- voiceflow_app/runtime.py — constants, paths, diagnostics, settings and Windows adapters.
+- voiceflow_app/core/realtime.py — pure dedupe/punctuation/final-tail/voice-command decisions.
+- voiceflow_app/core/recording_state.py — pure recording-state classification.
+- voiceflow_app/core/hotkey_state.py — pure hotkey edge/debounce decisions.
 - services/audio.py — AudioRecorder.
 - services/transcription.py — LocalTranscriber / faster-whisper.
 - services/text_cleaner.py — LocalTextCleaner.
@@ -22,7 +25,7 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - app/controls.py — microphone + hotkey editor controls.
 - app/hotkeys.py — global hotkey polling/dispatch.
 - app/recording.py — start/stop/warm-up.
-- app/streaming.py — chunking, dedupe, realtime worker, queue, voice commands.
+- app/streaming.py — realtime orchestration/worker/queue; pure chunk decisions live in core/realtime.py.
 - app/actions.py — copy/paste/settings/window lifecycle/shutdown.
 - tests/test_repository_contract.py — offline repository contracts.
 - .github/workflows/python-check.yml — validation, package, self-test, release.
@@ -76,3 +79,11 @@ CI package runs prove 1-3, not 4-5. Mark unsupported claims NOT VERIFIED.
 ## Definition of done
 
 Know current source commit, review actual diff, pass relevant checks, inspect final Actions, verify package/release when requested, and explicitly name any unverified Windows/hardware behavior.
+
+## Compatibility migration status
+
+context.py remains a temporary bridge for legacy orchestration mixins. Architecture 2.0 removes it from app/main_window.py, app/recording.py and app/hotkeys.py. Remaining wildcard consumers must be migrated incrementally with tests; do not delete context.py until static references and packaged runtime both prove it unused.
+
+## Documentation split
+
+Technical/AI docs stay in docs/. End-user educational material lives in docs/user-guide/. Do not mix user tutorials back into the technical architecture root.

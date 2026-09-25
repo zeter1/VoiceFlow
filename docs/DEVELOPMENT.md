@@ -22,6 +22,10 @@ voiceflow.py — compatibility launcher; implementation находится в vo
 ~~~powershell
 python -m compileall -q voiceflow.py voiceflow_app tests
 python -m unittest discover -s tests -v
+# Pure Architecture 2.0 regressions live in:
+# tests/test_realtime_core.py
+# tests/test_recording_state.py
+# tests/test_hotkey_state.py
 ~~~
 
 ## Evidence по типу изменения

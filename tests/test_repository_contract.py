@@ -13,6 +13,9 @@ EXPECTED_MODULES = {
     "runtime.py",
     "context.py",
     "entrypoint.py",
+    "core/realtime.py",
+    "core/recording_state.py",
+    "core/hotkey_state.py",
     "services/audio.py",
     "services/transcription.py",
     "services/text_cleaner.py",
@@ -53,6 +56,29 @@ class RepositoryContractTests(unittest.TestCase):
             if count > 1800:
                 oversized[str(path.relative_to(ROOT))] = count
         self.assertFalse(oversized, f"Unexpected monolithic module(s): {oversized}")
+
+    def test_pure_core_stays_independent_from_runtime_and_ui(self) -> None:
+        forbidden = {"voiceflow_app.runtime", "voiceflow_app.context", "tkinter"}
+        for relative in ("core/realtime.py", "core/recording_state.py", "core/hotkey_state.py"):
+            path = PACKAGE / relative
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            imported = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    imported.update(alias.name for alias in node.names)
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    imported.add(node.module)
+            bad = sorted(
+                name
+                for name in imported
+                if any(name == prefix or name.startswith(prefix + ".") for prefix in forbidden)
+            )
+            self.assertFalse(bad, f"{relative} must remain pure/testable; forbidden imports: {bad}")
+
+    def test_context_wildcard_is_removed_from_new_state_owners(self) -> None:
+        for relative in ("app/main_window.py", "app/recording.py", "app/hotkeys.py"):
+            source = (PACKAGE / relative).read_text(encoding="utf-8")
+            self.assertNotIn("from ..context import *", source, relative)
 
     def test_source_mode_runtime_data_stays_at_repository_root(self) -> None:
         source = (PACKAGE / "runtime.py").read_text(encoding="utf-8")

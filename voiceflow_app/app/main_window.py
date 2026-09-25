@@ -2,7 +2,34 @@
 
 from __future__ import annotations
 
-from ..context import *  # noqa: F401,F403
+import queue
+import re
+import threading
+import tkinter as tk
+from pathlib import Path
+from typing import Optional
+
+from ..runtime import (
+    APP_NAME,
+    COMPUTE_TYPE_OPTIONS,
+    INFERENCE_DEVICE_OPTIONS,
+    IS_WINDOWS,
+    LOCAL_WHISPER_MODEL,
+    PasteTarget,
+    QUALITY_OPTIONS,
+    SETTINGS_PATH,
+    STREAMING_SPEED_OPTIONS,
+    SettingsStore,
+    WHISPER_MODEL_OPTIONS,
+    is_windows_startup_enabled,
+    log_info,
+    pretty_hotkey,
+)
+from ..services.audio import AudioRecorder
+from ..services.text_cleaner import LocalTextCleaner
+from ..services.transcription import LocalTranscriber
+from ..ui.notifications import NotificationManager
+from ..ui.tray import TrayManager
 from .actions import ActionsMixin
 from .controls import ControlsMixin
 from .hotkeys import HotkeyMixin

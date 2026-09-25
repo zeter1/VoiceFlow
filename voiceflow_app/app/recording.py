@@ -6,10 +6,57 @@ makes navigation, review and future extraction safer.
 
 from __future__ import annotations
 
-from ..context import *  # noqa: F401,F403 - compatibility surface for extracted methods
+from dataclasses import asdict
+import threading
+import time
+import tkinter as tk
+from typing import Optional
+
+from ..core.recording_state import (
+    RecordingStateSnapshot,
+    derive_recording_phase,
+    needs_idle_repair,
+)
+from ..runtime import (
+    COMPUTE_TYPE_OPTIONS,
+    HOTKEY_DEBOUNCE_SECONDS,
+    HOTKEY_START_GUARD_SECONDS,
+    INFERENCE_DEVICE_OPTIONS,
+    LOCAL_WHISPER_MODEL,
+    PasteTarget,
+    QUALITY_OPTIONS,
+    RuntimeSettings,
+    STREAMING_SPEED_OPTIONS,
+    STREAM_FINAL_CHUNK_ON_STOP,
+    WHISPER_MODEL_OPTIONS,
+    get_paste_target,
+    log_exception,
+    log_info,
+    log_warning,
+)
 
 
 class RecordingMixin:
+    def _recording_state_snapshot(
+        self,
+        *,
+        status: Optional[str] = None,
+        button_text: str = "",
+        button_state: str = "",
+    ) -> RecordingStateSnapshot:
+        if status is None:
+            status = self.status_var.get()
+        return RecordingStateSnapshot(
+            is_recording=bool(self.recorder.is_recording),
+            finalizing=bool(self.finalizing_recording),
+            start_in_progress=bool(self.recording_start_in_progress),
+            pending_hotkey_start=bool(self.pending_hotkey_start_requested),
+            streaming_thread_present=self.streaming_thread is not None,
+            status=status,
+            button_text=button_text,
+            button_state=button_state,
+        )
+
     def _is_streaming_thread_alive(self) -> bool:
         try:
             return bool(self.streaming_thread is not None and self.streaming_thread.is_alive())
@@ -37,24 +84,12 @@ class RecordingMixin:
                 button_text = ""
                 button_state = ""
             stream_alive = self._is_streaming_thread_alive()
-            busy_status = status in {
-                "Распознаю...",
-                "Обрабатываю...",
-                "Обрабатываю последний фрагмент...",
-                "Идёт запись...",
-                "Стриминг...",
-                "Стриминг: предупреждение",
-            }
-            needs_repair = (
-                bool(self.finalizing_recording)
-                or bool(self.recording_start_in_progress)
-                or bool(self.pending_hotkey_start_requested)
-                or self.streaming_thread is not None
-                or busy_status
-                or button_state == "disabled"
-                or ("Остановить" in button_text)
-                or ("Обрабатываю" in button_text)
+            snapshot = self._recording_state_snapshot(
+                status=status,
+                button_text=button_text,
+                button_state=button_state,
             )
+            needs_repair = needs_idle_repair(snapshot)
             if not needs_repair:
                 return False
 
@@ -177,7 +212,14 @@ class RecordingMixin:
             log_exception("Emergency force stop failed", exc, reason=reason)
 
     def toggle_recording(self, origin: str = "main", captured_target: Optional[PasteTarget] = None) -> None:
-        self.log_state("recording", "toggle_requested", origin=origin, captured_target=self._hotkey_target_snapshot(captured_target))
+        phase_before = derive_recording_phase(self._recording_state_snapshot()).value
+        self.log_state(
+            "recording",
+            "toggle_requested",
+            origin=origin,
+            captured_target=self._hotkey_target_snapshot(captured_target),
+            phase=phase_before,
+        )
         if origin == "hotkey":
             self.log_hotkey_trace(
                 "toggle_requested",

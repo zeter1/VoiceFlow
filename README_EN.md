@@ -177,6 +177,7 @@ CI performs syntax/compile checks and offline repository-contract regression tes
 ## Documentation and support
 
 - [VoiceFlow architecture](docs/ARCHITECTURE.md)
+- [User and learning guides](docs/user-guide/README.md)
 - [AI/Codex repository map](docs/AI_CONTEXT.md)
 - [Development and verification](docs/DEVELOPMENT.md)
 - [Repository instructions for AI agents](AGENTS.md)
