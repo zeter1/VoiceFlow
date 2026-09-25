@@ -10,6 +10,11 @@ from ..config import APP_NAME
 from ..dependencies import Image, ImageDraw, pystray
 from ..diagnostics import log_category, log_exception, log_info, log_warning
 from ..windows import get_paste_target
+from ..worker_messages import (
+    ExternalTogglePayload,
+    WorkerMessageKind,
+    put_worker_message,
+)
 
 
 class TrayManager:
@@ -74,14 +79,22 @@ class TrayManager:
     def _open_window(self, _icon: object = None, _item: object = None) -> None:
         try:
             log_category("hotkey_trace", "tray_open_window_clicked")
-            self.app.worker_queue.put(("external_show_window", "tray_menu"))
+            put_worker_message(
+                self.app.worker_queue,
+                WorkerMessageKind.EXTERNAL_SHOW_WINDOW,
+                "tray_menu",
+            )
         except Exception as exc:
             log_exception("Tray open-window action failed", exc)
 
     def _hide_window(self, _icon: object = None, _item: object = None) -> None:
         try:
             log_category("hotkey_trace", "tray_hide_window_clicked")
-            self.app.worker_queue.put(("external_hide_window", "tray_menu"))
+            put_worker_message(
+                self.app.worker_queue,
+                WorkerMessageKind.EXTERNAL_HIDE_WINDOW,
+                "tray_menu",
+            )
         except Exception as exc:
             log_exception("Tray hide-window action failed", exc)
 
@@ -96,13 +109,21 @@ class TrayManager:
             # Put the action into the Tk-polled worker queue instead of calling
             # root.after from the pystray thread. On some systems pystray callbacks
             # can arrive from a non-Tk thread and the menu click then looks ignored.
-            self.app.worker_queue.put(("external_toggle_recording", ("tray_menu", target)))
+            put_worker_message(
+                self.app.worker_queue,
+                WorkerMessageKind.EXTERNAL_TOGGLE_RECORDING,
+                ExternalTogglePayload(source="tray_menu", target=target),
+            )
         except Exception as exc:
             log_exception("Tray toggle action failed", exc)
 
     def _exit_app(self, _icon: object = None, _item: object = None) -> None:
         try:
             log_category("hotkey_trace", "tray_exit_clicked")
-            self.app.worker_queue.put(("external_exit", "tray_menu"))
+            put_worker_message(
+                self.app.worker_queue,
+                WorkerMessageKind.EXTERNAL_EXIT,
+                "tray_menu",
+            )
         except Exception as exc:
             log_exception("Tray exit action failed", exc)

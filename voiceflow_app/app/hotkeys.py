@@ -40,6 +40,11 @@ from ..hotkey_config import (
     summarize_windows_hotkey_state,
 )
 from ..windows import PasteTarget, get_paste_target
+from ..worker_messages import (
+    HotkeyPressedPayload,
+    WorkerMessageKind,
+    put_worker_message,
+)
 
 
 class HotkeyMixin:
@@ -297,7 +302,15 @@ class HotkeyMixin:
                             will_schedule_handle=True,
                         )
                         try:
-                            self.worker_queue.put(("global_hotkey_pressed", (hotkey, target, generation)))
+                            put_worker_message(
+                                self.worker_queue,
+                                WorkerMessageKind.GLOBAL_HOTKEY_PRESSED,
+                                HotkeyPressedPayload(
+                                    hotkey=hotkey,
+                                    target=target,
+                                    generation=generation,
+                                ),
+                            )
                             self.log_hotkey_trace(
                                 "poll_press_queued_for_main_thread",
                                 hotkey=hotkey,

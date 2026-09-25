@@ -12,6 +12,7 @@ PACKAGE = ROOT / "voiceflow_app"
 EXPECTED_MODULES = {
     "runtime.py",
     "composition.py",
+    "worker_messages.py",
     "config.py",
     "dependencies.py",
     "audio_devices.py",
@@ -25,9 +26,11 @@ EXPECTED_MODULES = {
     "windows_startup.py",
     "entrypoint.py",
     "core/realtime.py",
+    "core/realtime_policy.py",
     "core/recording_state.py",
     "core/hotkey_state.py",
     "services/audio.py",
+    "services/audio_analysis.py",
     "services/contracts.py",
     "services/transcription.py",
     "services/text_cleaner.py",
@@ -41,6 +44,7 @@ EXPECTED_MODULES = {
     "app/hotkeys.py",
     "app/recording.py",
     "app/streaming.py",
+    "app/worker_dispatch.py",
     "app/actions.py",
 }
 
@@ -73,7 +77,7 @@ class RepositoryContractTests(unittest.TestCase):
 
     def test_pure_core_stays_independent_from_runtime_and_ui(self) -> None:
         forbidden = {"voiceflow_app.runtime", "voiceflow_app.context", "tkinter"}
-        for relative in ("core/realtime.py", "core/recording_state.py", "core/hotkey_state.py"):
+        for relative in ("core/realtime.py", "core/realtime_policy.py", "core/recording_state.py", "core/hotkey_state.py"):
             path = PACKAGE / relative
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             imported = set()
@@ -179,6 +183,31 @@ class RepositoryContractTests(unittest.TestCase):
         source = (PACKAGE / "app" / "recording.py").read_text(encoding="utf-8")
         self.assertNotIn("_windows_missing_cuda_dlls", source)
         self.assertIn("backend_candidates(", source)
+
+    def test_streaming_realtime_policy_and_dispatch_are_extracted(self) -> None:
+        streaming = (PACKAGE / "app" / "streaming.py").read_text(encoding="utf-8")
+        dispatch = (PACKAGE / "app" / "worker_dispatch.py").read_text(encoding="utf-8")
+        self.assertLessEqual(len(streaming.splitlines()), 900)
+        self.assertLessEqual(len(dispatch.splitlines()), 360)
+        self.assertNotIn("def _frames_to_float_mono", streaming)
+        self.assertNotIn("def _handle_worker_message", streaming)
+        self.assertIn("decide_chunk_commit(", streaming)
+        self.assertIn("coerce_worker_message(", dispatch)
+
+    def test_queue_producers_use_typed_worker_contract(self) -> None:
+        for relative in ("app/streaming.py", "app/hotkeys.py", "ui/tray.py"):
+            source = (PACKAGE / relative).read_text(encoding="utf-8")
+            with self.subTest(relative=relative):
+                self.assertNotIn("worker_queue.put((", source)
+
+    def test_audio_analysis_has_no_eager_runtime_dependency_import(self) -> None:
+        path = PACKAGE / "services" / "audio_analysis.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        eager = []
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom) and node.module == "dependencies":
+                eager.append(node.module)
+        self.assertFalse(eager, "audio_analysis must import NumPy lazily inside production analysis")
 
     def test_source_mode_runtime_data_stays_at_repository_root(self) -> None:
         source = (PACKAGE / "config.py").read_text(encoding="utf-8")

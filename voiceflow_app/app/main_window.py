@@ -31,6 +31,7 @@ from .controls import ControlsMixin
 from .hotkeys import HotkeyMixin
 from .recording import RecordingMixin
 from .streaming import StreamingMixin
+from .worker_dispatch import WorkerDispatchMixin
 from .ui import UiMixin
 
 
@@ -40,6 +41,7 @@ class VoiceFlowOfflineApp(
     HotkeyMixin,
     RecordingMixin,
     StreamingMixin,
+    WorkerDispatchMixin,
     ActionsMixin,
 ):
     @property

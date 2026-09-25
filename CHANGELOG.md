@@ -91,3 +91,14 @@
 - Session controller теперь умеет раздельно stop capture и discard buffered frames.
 - RecordingMixin сохраняет прежний realtime порядок: stop microphone -> signal streaming worker -> discard frames, чтобы не увеличивать риск потери последнего доступного chunk при stop race.
 - Добавлен regression test на deferred frame discard.
+
+## 2026-09-25 — Architecture 2.5: Headless Realtime Policy & Queue Contracts
+
+- Realtime timing/profile selection and chunk commit/cancellation decisions extracted from app/streaming.py into pure core/realtime_policy.py.
+- Audio signal statistics moved into services/audio_analysis.py; NumPy is imported lazily only for production frame analysis, while thresholds/stat summaries have dependency-free regression tests.
+- app/streaming.py now evaluates audio statistics once per candidate chunk instead of recomputing the same metrics for probable-speech detection.
+- Main-thread queue decode/stale-session/UI routing moved from streaming.py into app/worker_dispatch.py.
+- Added typed worker_messages.py contract with explicit message kinds/payloads, legacy tuple coercion and pure stale-session/after-stop gates.
+- Hotkey polling, tray callbacks and streaming workers now enqueue typed worker messages instead of ad-hoc tuple literals.
+- Added regression tests for timing profiles, pause/max-duration triggers, quiet/bad chunk advancement, final-chunk cancellation, noisy-room pause statistics and stale session filtering.
+- Repository contracts now bound both streaming.py and worker_dispatch.py and prevent direct tuple queue producers from returning in critical producers.

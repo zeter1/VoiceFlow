@@ -1,18 +1,18 @@
 # Изменения Windows-сборки
 
-## Architecture 2.4 — Application Ports & Headless Session Tests
+## Architecture 2.5 — Headless Realtime Pipeline & Queue Contracts
 
-- VoiceFlowOfflineApp получает сервисы через injectable ApplicationServices вместо прямого создания recorder/transcriber/cleaner/notification/tray implementations.
-- Добавлен headless session controller для capture lifecycle, session identity и realtime committed text.
-- Realtime frames → temporary WAV → Whisper path и stable commit state теперь имеют отдельный application-layer seam, тестируемый без GUI.
-- Добавлены regression tests для полного headless сценария start → frames → transcription → stable commit → stop, повторного старта, race/finalizing и failure/recovery.
-- Исправлена скрытая warm-up проблема после Architecture 2.3: runtime больше не обращается к удалённому private CUDA helper.
-- Packaged self-test проверяет новый composition graph до запуска Tk GUI.
-
-- Сохранён прежний безопасный порядок остановки realtime: сначала останавливается capture и сигнализируется streaming worker, затем очищаются buffered frames.
+- Вынесены pure realtime timing/commit/cancellation decisions из большого streaming.py.
+- Аудиостатистика вынесена в отдельный audio-analysis owner; NumPy загружается лениво только при настоящем анализе frames.
+- Убрано повторное вычисление одних и тех же audio metrics перед commit decision.
+- Main-thread worker dispatch и stale-session UI routing вынесены в отдельный app/worker_dispatch.py.
+- Worker queue получил явный typed contract вместо набора неформальных строк/tuple payloads.
+- Stale results от старой recording session и поздние результаты после stop теперь проходят через отдельный тестируемый gate.
+- Hotkey polling, tray callbacks и realtime worker используют единый queue-message API.
+- Добавлены offline regression tests для pause/noise/forced commit/final cancellation/session restart behavior.
 
 ## Проверка сборки
 
-GitHub Actions выполняет compile, offline regression/architecture tests, PyInstaller build, bounded packaged VoiceFlow.exe --self-test, ZIP/SHA-256 и публикацию prerelease.
+GitHub Actions выполняет compile, полный offline regression/architecture suite, PyInstaller build, bounded packaged VoiceFlow.exe --self-test, ZIP/SHA-256 и публикацию prerelease.
 
-Реальный микрофон, CUDA inference, global hotkey, tray, уведомления и вставка текста в сторонние Windows-приложения требуют отдельной интерактивной runtime-проверки.
+Реальный микрофон, CUDA inference, global hotkey, tray и вставка текста в сторонние Windows-приложения требуют отдельной интерактивной runtime-проверки.

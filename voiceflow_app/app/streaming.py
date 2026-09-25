@@ -15,14 +15,10 @@ from pathlib import Path
 from typing import Optional
 
 from ..config import (
-    HOTKEY_START_GUARD_SECONDS,
     STREAM_FINAL_CHUNK_ON_STOP,
     STREAM_FINISH_TIMEOUT_SECONDS,
-    STREAM_SENTENCE_PAUSE_SECONDS_BALANCE,
-    STREAM_SENTENCE_PAUSE_SECONDS_FAST,
-    STREAM_SENTENCE_PAUSE_SECONDS_QUALITY,
 )
-from ..dependencies import np, pyautogui
+from ..dependencies import pyautogui
 from ..diagnostics import (
     log_category,
     log_dictation_text,
@@ -31,6 +27,13 @@ from ..diagnostics import (
     log_warning,
 )
 from ..settings import RuntimeSettings
+from ..services.audio_analysis import stream_audio_stats
+from ..worker_messages import (
+    StreamResultPayload,
+    StreamWarningPayload,
+    WorkerMessageKind,
+    put_worker_message,
+)
 from .session_controller import SessionTranscriptionRequest
 from ..voice_commands import (
     normalize_voice_command_text,
@@ -38,6 +41,11 @@ from ..voice_commands import (
     voice_control_command_from_text,
 )
 from ..windows import PasteTarget, get_paste_target
+from ..core.realtime_policy import (
+    build_realtime_timing,
+    decide_chunk_commit,
+    should_process_final_chunk,
+)
 from ..core.realtime import (
     dedupe_stream_chunk as core_dedupe_stream_chunk,
     get_missing_final_tail as core_get_missing_final_tail,
@@ -137,98 +145,27 @@ class StreamingMixin:
                             session_id=session_id,
                             timeout_seconds=STREAM_FINISH_TIMEOUT_SECONDS,
                         )
-                        self.worker_queue.put(("stream_finish_timeout", session_id))
+                        put_worker_message(
+                            self.worker_queue,
+                            WorkerMessageKind.STREAM_FINISH_TIMEOUT,
+                            session_id,
+                        )
                         finish_message_sent = True
                         return
             except BaseException as exc:
                 log_exception("Background wait for realtime worker failed", exc, session_id=session_id)
             finally:
                 if not finish_message_sent:
-                    self.worker_queue.put(("stream_finished", session_id))
+                    put_worker_message(
+                        self.worker_queue,
+                        WorkerMessageKind.STREAM_FINISHED,
+                        session_id,
+                    )
 
         threading.Thread(target=waiter, name="voiceflow-stream-finalizer", daemon=True).start()
 
-    def _frames_to_float_mono(self, frames: list[np.ndarray]) -> np.ndarray:
-        if not frames:
-            return np.array([], dtype=np.float32)
-        audio = np.concatenate(frames, axis=0)
-        if audio.ndim > 1:
-            audio = audio.astype(np.float32).mean(axis=1)
-        else:
-            audio = audio.astype(np.float32).reshape(-1)
-        if audio.size and np.nanmax(np.abs(audio)) > 2.0:
-            audio = audio / 32768.0
-        if audio.size:
-            audio = audio - float(np.mean(audio))
-        return audio
-
-    def _stream_audio_stats(self, frames: list[np.ndarray], sample_rate: int) -> dict[str, float]:
-        audio = self._frames_to_float_mono(frames)
-        if audio.size == 0 or sample_rate <= 0:
-            return {"duration": 0.0, "rms": 0.0, "peak": 0.0, "trailing_silence": 0.0}
-        duration = float(audio.size) / float(sample_rate)
-        abs_audio = np.abs(audio)
-        peak = float(np.max(abs_audio)) if abs_audio.size else 0.0
-        rms = float(np.sqrt(np.mean(audio * audio))) if audio.size else 0.0
-        threshold = max(0.006, min(0.028, rms * 0.72))
-        active = np.where(abs_audio > threshold)[0]
-        active_ratio = float(active.size) / float(audio.size) if audio.size else 0.0
-        peak_to_rms = peak / max(rms, 1e-9)
-        trailing_silence = duration
-        if active.size:
-            trailing_silence = float(audio.size - int(active[-1]) - 1) / float(sample_rate)
-
-        # A second, adaptive pause detector for noisy rooms. The old detector
-        # used an absolute-ish threshold and often saw PC fan / air purifier
-        # noise as continuous activity, so trailing_silence stayed near 0 even
-        # after the user paused for a sentence. Here we measure short-window
-        # RMS, estimate the noise floor, and detect when speech-level energy
-        # stopped while background noise continues.
-        speech_trailing_silence = trailing_silence
-        speech_threshold = threshold
-        noise_floor_rms = 0.0
-        speech_high_rms = 0.0
-        try:
-            window = max(1, int(sample_rate * 0.06))  # 60 ms windows
-            usable_size = (audio.size // window) * window
-            if usable_size >= window * 4:
-                windowed = audio[:usable_size].reshape(-1, window)
-                win_rms = np.sqrt(np.mean(windowed * windowed, axis=1))
-                if win_rms.size:
-                    noise_floor_rms = float(np.percentile(win_rms, 20))
-                    speech_high_rms = float(np.percentile(win_rms, 85))
-                    median_rms = float(np.median(win_rms))
-                    speech_threshold = max(
-                        0.006,
-                        min(0.075, max(noise_floor_rms * 2.1, median_rms * 1.25, speech_high_rms * 0.32)),
-                    )
-                    speech_windows = np.where(win_rms > speech_threshold)[0]
-                    if speech_windows.size:
-                        silent_windows = int(win_rms.size - int(speech_windows[-1]) - 1)
-                        speech_trailing_silence = max(0.0, silent_windows * window / float(sample_rate))
-                    else:
-                        speech_trailing_silence = duration
-        except Exception:
-            speech_trailing_silence = trailing_silence
-
-        pause_seconds = max(trailing_silence, speech_trailing_silence)
-        return {
-            "duration": duration,
-            "rms": rms,
-            "peak": peak,
-            "peak_to_rms": peak_to_rms,
-            "active_ratio": active_ratio,
-            "trailing_silence": trailing_silence,
-            "speech_trailing_silence": speech_trailing_silence,
-            "pause_seconds": pause_seconds,
-            "speech_threshold": speech_threshold,
-            "noise_floor_rms": noise_floor_rms,
-            "speech_high_rms": speech_high_rms,
-        }
-
-    def _is_probably_speech(self, frames: list[np.ndarray], sample_rate: int) -> bool:
-        stats = self._stream_audio_stats(frames, sample_rate)
-        return stats["duration"] >= 0.35 and stats["peak"] >= 0.010 and stats["rms"] >= 0.0025
+    def _stream_audio_stats(self, frames: list[object], sample_rate: int) -> dict[str, float]:
+        return stream_audio_stats(frames, sample_rate)
 
     def _stream_quality(self, runtime_settings: RuntimeSettings) -> str:
         profile = runtime_settings.realtime_speed_profile
@@ -329,43 +266,23 @@ class StreamingMixin:
         Whisper. We accumulate audio and commit only after a pause or when the
         chunk becomes long enough.
         """
-        configured_interval = runtime_settings.realtime_chunk_seconds
+        timing = build_realtime_timing(
+            runtime_settings.realtime_speed_profile,
+            runtime_settings.realtime_chunk_seconds,
+            use_vad_filter=runtime_settings.use_vad_filter,
+            cpu_path_expected=self._cpu_realtime_path_expected(runtime_settings),
+        )
         profile = runtime_settings.realtime_speed_profile
         streaming_model_name = self._streaming_model_name(runtime_settings)
-        if profile == "Быстрее":
-            poll_interval = 0.18
-            min_seconds = min(max(0.75, configured_interval * 0.35), 1.35)
-            max_seconds = min(max(1.60, configured_interval * 0.75), 2.80)
-            trailing_silence_required = 0.24
-            sentence_end_pause_seconds = STREAM_SENTENCE_PAUSE_SECONDS_FAST
-        elif profile == "Баланс":
-            poll_interval = 0.26
-            min_seconds = min(max(1.35, configured_interval * 0.55), 2.40)
-            max_seconds = min(max(3.80, configured_interval * 1.35), 6.00)
-            trailing_silence_required = 0.42
-            sentence_end_pause_seconds = STREAM_SENTENCE_PAUSE_SECONDS_BALANCE
-        else:
-            # Noisy/distant microphones need longer phrase chunks. Logs showed
-            # profile "Качество" with 4-second forced chunks and almost no
-            # trailing silence; Whisper hallucinated subtitles/outros and those
-            # chunks were discarded, so real words could be lost. In quality mode
-            # wait longer and prefer a real pause before committing.
-            if self._cpu_realtime_path_expected(runtime_settings):
-                poll_interval = 0.32
-                min_seconds = min(max(1.80, configured_interval * 0.60), 2.80)
-                max_seconds = min(max(4.80, configured_interval * 1.25), 7.00)
-                trailing_silence_required = 0.55
-                sentence_end_pause_seconds = STREAM_SENTENCE_PAUSE_SECONDS_QUALITY
-            else:
-                poll_interval = 0.24
-                min_seconds = min(max(1.60, configured_interval * 0.55), 2.60)
-                max_seconds = min(max(4.20, configured_interval * 1.15), 6.50)
-                trailing_silence_required = 0.48
-                sentence_end_pause_seconds = STREAM_SENTENCE_PAUSE_SECONDS_QUALITY
-        streaming_vad_filter = bool(runtime_settings.use_vad_filter or profile in {"Баланс", "Качество"})
+        poll_interval = timing.poll_interval
+        min_seconds = timing.min_seconds
+        max_seconds = timing.max_seconds
+        trailing_silence_required = timing.trailing_silence_required
+        sentence_end_pause_seconds = timing.sentence_end_pause_seconds
+        streaming_vad_filter = timing.streaming_vad_filter
         bad_retry_after_frame_index = 0
         bad_filtered_streak = 0
-        max_bad_hold_seconds = max(max_seconds + 3.0, max_seconds * 1.75)
+        max_bad_hold_seconds = timing.max_bad_hold_seconds
         committed_raw_context = ""
         committed_clean_context = ""
         last_frame_index = self.stream_last_frame_index
@@ -399,29 +316,18 @@ class StreamingMixin:
                 return
 
             stats = self._stream_audio_stats(frames, sample_rate)
+            decision = decide_chunk_commit(stats, timing, is_final=is_final)
+            if not decision.commit:
+                if decision.advance_frame:
+                    last_frame_index = new_index
+                return
+
             duration = stats["duration"]
-            has_pause = False
-            forced_commit = False
-            pause_seconds = float(stats.get("pause_seconds", stats.get("trailing_silence", 0.0)))
-            sentence_pause = False
-            if is_final:
-                if duration < 0.20 or stats["peak"] < 0.008 or stats["rms"] < 0.0018:
-                    last_frame_index = new_index
-                    return
-                has_pause = True
-                sentence_pause = True
-            else:
-                if duration < min_seconds:
-                    return
-                if not self._is_probably_speech(frames, sample_rate):
-                    last_frame_index = new_index
-                    return
-                pause_seconds = float(stats.get("pause_seconds", stats.get("trailing_silence", 0.0)))
-                sentence_pause = pause_seconds >= sentence_end_pause_seconds
-                has_pause = pause_seconds >= trailing_silence_required
-                forced_commit = duration >= max_seconds
-                if not has_pause and not forced_commit:
-                    return
+            pause_seconds = decision.pause_seconds
+            sentence_pause = decision.sentence_pause
+            has_pause = decision.has_pause
+            forced_commit = decision.forced_commit
+            if not is_final:
                 log_info(
                     "Realtime commit triggered",
                     session_id=session_id,
@@ -439,6 +345,7 @@ class StreamingMixin:
                     peak_to_rms=round(stats.get("peak_to_rms", 0.0), 3),
                     active_ratio=round(stats.get("active_ratio", 0.0), 3),
                     streaming_vad_filter=streaming_vad_filter,
+                    decision_reason=decision.reason,
                 )
 
             # Never freeze realtime input after a bad/noisy chunk.
@@ -599,7 +506,19 @@ class StreamingMixin:
                     )
                     bad_filtered_streak = 0
                     bad_retry_after_frame_index = 0
-                    self.worker_queue.put(("stream_result", (session_id, raw_delta, clean_delta, origin, mode, is_final, commit_meta)))
+                    put_worker_message(
+                        self.worker_queue,
+                        WorkerMessageKind.STREAM_RESULT,
+                        StreamResultPayload(
+                            session_id=session_id,
+                            raw=raw_delta,
+                            cleaned=clean_delta,
+                            origin=origin,
+                            stream_mode=mode,
+                            is_final=is_final,
+                            commit_meta=commit_meta,
+                        ),
+                    )
                 last_frame_index = new_index
             finally:
                 try:
@@ -617,12 +536,19 @@ class StreamingMixin:
             except BaseException as exc:
                 log_exception("Realtime streaming chunk failed", exc, session_id=session_id, origin=origin, mode=mode)
                 try:
-                    self.worker_queue.put(("stream_warning", (session_id, exc)))
+                    put_worker_message(
+                        self.worker_queue,
+                        WorkerMessageKind.STREAM_WARNING,
+                        StreamWarningPayload(session_id=session_id, error=exc),
+                    )
                 except Exception:
                     pass
                 time.sleep(0.8)
 
-        if stop_event.is_set() and not STREAM_FINAL_CHUNK_ON_STOP:
+        if not should_process_final_chunk(
+            stop_requested=stop_event.is_set(),
+            final_chunk_on_stop=STREAM_FINAL_CHUNK_ON_STOP,
+        ):
             log_info(
                 "Realtime final chunk skipped to keep hotkey responsive",
                 session_id=session_id,
@@ -645,7 +571,11 @@ class StreamingMixin:
         except BaseException as exc:
             log_exception("Realtime final chunk failed", exc, session_id=session_id, origin=origin, mode=mode)
             try:
-                self.worker_queue.put(("stream_warning", (session_id, exc)))
+                put_worker_message(
+                        self.worker_queue,
+                        WorkerMessageKind.STREAM_WARNING,
+                        StreamWarningPayload(session_id=session_id, error=exc),
+                    )
             except Exception:
                 pass
         log_info("Realtime streaming worker finished", session_id=session_id, origin=origin, mode=mode)
@@ -712,10 +642,14 @@ class StreamingMixin:
                     wav_path.unlink(missing_ok=True)
                 except Exception:
                     pass
-            self.worker_queue.put(("result", (raw, cleaned, origin)))
+            put_worker_message(
+                self.worker_queue,
+                WorkerMessageKind.RESULT,
+                (raw, cleaned, origin),
+            )
         except BaseException as exc:
             log_exception("Audio processing worker crashed", exc, wav_path=wav_path, origin=origin)
-            self.worker_queue.put(("error", exc))
+            put_worker_message(self.worker_queue, WorkerMessageKind.ERROR, exc)
 
     def _split_stream_voice_command(self, raw: str, cleaned: str) -> tuple[str, str, Optional[dict[str, object]]]:
         return core_split_stream_voice_command(
@@ -873,272 +807,3 @@ class StreamingMixin:
         else:
             self.notify(f"⚠ Команда распознана, но не выполнена: {label}", kind="warning", duration_ms=1800)
         return ok
-
-    def _handle_worker_message(self, msg_type: str, payload: object) -> None:
-        if msg_type == "global_hotkey_pressed":
-            try:
-                hotkey, target, generation = payload  # type: ignore[misc]
-            except Exception:
-                hotkey, target, generation = self.hotkey_var.get(), get_paste_target(), None
-            self.log_hotkey_trace(
-                "global_hotkey_dequeued_on_main_thread",
-                hotkey=hotkey,
-                generation=generation,
-                target=self._hotkey_target_snapshot(target),
-            )
-            self._handle_global_hotkey(str(hotkey), target if isinstance(target, PasteTarget) else None)
-            return
-
-        if msg_type == "external_toggle_recording":
-            try:
-                source, target = payload  # type: ignore[misc]
-            except Exception:
-                source, target = "unknown", get_paste_target()
-            self.log_state(
-                "recording",
-                "external_toggle_dequeued",
-                source=source,
-                target=self._hotkey_target_snapshot(target if isinstance(target, PasteTarget) else None),
-            )
-            self.log_hotkey_trace(
-                "external_toggle_dequeued",
-                source=source,
-                target=self._hotkey_target_snapshot(target if isinstance(target, PasteTarget) else None),
-            )
-            self._repair_idle_recording_state(f"external_toggle:{source}")
-            self.toggle_recording("hotkey", target if isinstance(target, PasteTarget) else None)
-            return
-
-        if msg_type == "external_show_window":
-            log_info("External show-window request", source=payload)
-            self.show_main_window()
-            return
-
-        if msg_type == "external_hide_window":
-            log_info("External hide-window request", source=payload)
-            self.hide_main_window(show_notification=True)
-            return
-
-        if msg_type == "external_exit":
-            log_info("External exit request", source=payload)
-            self.exit_application()
-            return
-
-        if msg_type == "stream_result":
-            commit_meta: dict[str, object] = {}
-            try:
-                if isinstance(payload, (tuple, list)) and len(payload) >= 7:
-                    session_id, raw, cleaned, origin, stream_mode, is_final, commit_meta = payload[:7]  # type: ignore[misc]
-                else:
-                    session_id, raw, cleaned, origin, stream_mode, is_final = payload  # type: ignore[misc]
-            except Exception:
-                session_id, raw, cleaned, origin, stream_mode, is_final = payload  # type: ignore[misc]
-                commit_meta = {}
-            if session_id != self.recording_session_id:
-                return
-            if not self.recorder.is_recording and not self.finalizing_recording:
-                log_info(
-                    "Late realtime stream result ignored after immediate stop",
-                    session_id=session_id,
-                    origin=origin,
-                    stream_mode=stream_mode,
-                    is_final=is_final,
-                    commit_meta=commit_meta if isinstance(commit_meta, dict) else {},
-                )
-                self.log_state(
-                    "streaming",
-                    "late_stream_result_ignored_after_stop",
-                    session_id=session_id,
-                    origin=origin,
-                    stream_mode=stream_mode,
-                    is_final=is_final,
-                )
-                if origin == "hotkey":
-                    self.log_hotkey_trace(
-                        "late_stream_result_ignored_after_stop",
-                        session_id=session_id,
-                        stream_mode=stream_mode,
-                        is_final=is_final,
-                    )
-                return
-            original_raw = raw
-            original_cleaned = cleaned
-            raw, cleaned, command = self._split_stream_voice_command(raw, cleaned)
-            if raw or cleaned:
-                self._handle_stream_text_piece(
-                    session_id=session_id,
-                    raw=raw,
-                    cleaned=cleaned,
-                    origin=origin,
-                    stream_mode=stream_mode,
-                    is_final=is_final,
-                )
-            if command and stream_mode == "Вставлять фрагментами" and origin == "hotkey":
-                self._execute_voice_control_command(
-                    command,
-                    session_id=session_id,
-                    raw_text=original_raw,
-                    cleaned_text=original_cleaned,
-                    origin=origin,
-                )
-                return
-
-        elif msg_type == "result":
-            raw, cleaned, origin = payload  # type: ignore[misc]
-            self.raw_text.delete("1.0", tk.END)
-            self.raw_text.insert(tk.END, raw)
-            self.clean_text.delete("1.0", tk.END)
-            self.clean_text.insert(tk.END, cleaned)
-            self.status_var.set("Готово")
-            self.timer_var.set("00:00")
-            self.record_btn.config(text="● Начать запись")
-            self.last_result_ready = True
-
-            streaming_insert_used = (
-                self.realtime_streaming_mode_var.get() == "Вставлять фрагментами"
-                and self.stream_inserted_any
-            )
-            if origin == "hotkey" and self.auto_paste_hotkey_var.get() and not streaming_insert_used:
-                ok = self.paste_result_to_saved_target(show_messages=False)
-                inserted_type = "отредактированный" if self.insert_edited_text_var.get() else "распознанный без редактирования"
-                if ok:
-                    self.status_var.set("Вставлено")
-                    self.notify(f"✅ Текст вставлен\nТип: {inserted_type}", kind="success", duration_ms=2600)
-                else:
-                    self.status_var.set("Ошибка вставки")
-                    self.notify("⚠ Текст распознан, но не вставился\nОн скопирован в буфер обмена — нажми Ctrl+V", kind="warning", duration_ms=4500)
-            elif streaming_insert_used:
-                final_text = cleaned if self.insert_edited_text_var.get() else raw
-                tail = self._get_missing_final_tail(self.stream_inserted_text, final_text)
-                if tail:
-                    ok = self.paste_text_to_current_target(" " + tail, show_messages=False)
-                    if ok:
-                        self.session_controller.record_commit(tail)
-                        self.notify(
-                            "✅ Стриминг завершён\nДобавлен финальный хвост текста",
-                            kind="success",
-                            duration_ms=3200,
-                        )
-                    else:
-                        self.notify(
-                            "✅ Стриминг завершён\nФинальная версия готова в окне; при необходимости скопируй её вручную",
-                            kind="warning",
-                            duration_ms=4200,
-                        )
-                else:
-                    self.notify(
-                        "✅ Стриминг завершён\nФразы уже вставлены, финальная версия готова в окне",
-                        kind="success",
-                        duration_ms=3200,
-                    )
-            else:
-                self.notify("✅ Текст распознан и готов", kind="success", duration_ms=2400)
-
-        elif msg_type == "stream_warning":
-            session_id, _exc = payload  # type: ignore[misc]
-            if session_id != self.recording_session_id:
-                return
-            # Non-fatal streaming failure. Most often this means CUDA was not ready;
-            # app should stay open and either fallback to CPU or keep recording.
-            self.status_var.set("Стриминг: предупреждение")
-            self.notify(
-                "⚠ Стриминг дал ошибку, программа не закрыта\nЕсли выбрана CUDA — попробуй auto или cpu, либо установи CUDA/cuDNN",
-                kind="warning",
-                duration_ms=4200,
-            )
-
-        elif msg_type in {"stream_finished", "stream_finish_timeout"}:
-            session_id = int(payload)
-            self.log_state("worker_queue", msg_type, session_id=session_id)
-            self.log_hotkey_trace("worker_stream_finish_message", message_type=msg_type, payload_session_id=session_id)
-            if session_id != self.recording_session_id:
-                self.log_state(
-                    "worker_queue",
-                    "stale_stream_finish_ignored",
-                    message_type=msg_type,
-                    payload_session_id=session_id,
-                    current_session_id=self.recording_session_id,
-                )
-                return
-            timed_out = msg_type == "stream_finish_timeout"
-            self.recorder.discard_frames()
-            self.streaming_thread = None
-            self.finalizing_recording = False
-            self.last_wav_path = None
-            self.record_btn.config(text="● Начать запись", state=tk.NORMAL)
-            self.status_var.set("Готово")
-            self.timer_var.set("00:00")
-            log_info("Recording finalization finished", session_id=session_id, timed_out=timed_out)
-            self.log_state("recording", "finalization_finished", session_id=session_id, timed_out=timed_out)
-            self.log_hotkey_trace("finalization_finished", session_id=session_id, timed_out=timed_out)
-            if timed_out:
-                self.notify(
-                    "⚠ Финальный фрагмент слишком долго обрабатывался\nГорячая клавиша снова доступна",
-                    kind="warning",
-                    duration_ms=2600,
-                )
-            self._start_pending_hotkey_recording()
-
-        elif msg_type == "error":
-            self.status_var.set("Ошибка")
-            self.finalizing_recording = False
-            self.record_btn.config(text="● Начать запись", state=tk.NORMAL)
-            self.notify("⚠ Ошибка распознавания текста", kind="error", duration_ms=4000)
-            self._show_error("Ошибка обработки", payload)  # type: ignore[arg-type]
-
-    def _start_pending_hotkey_recording(self) -> None:
-        if not self.pending_hotkey_start_requested:
-            self.log_state("recording", "no_pending_hotkey_start")
-            self.log_hotkey_trace("no_pending_hotkey_start_after_finalization")
-            return
-        target = self.pending_hotkey_start_target
-        self.pending_hotkey_start_requested = False
-        self.pending_hotkey_start_target = None
-        if self.recorder.is_recording or self.finalizing_recording:
-            self.log_state("recording", "pending_hotkey_start_skipped_busy")
-            return
-        log_info("Starting queued hotkey recording", previous_session_id=self.recording_session_id)
-        self.log_state("recording", "pending_hotkey_start_launching", previous_session_id=self.recording_session_id)
-        self.log_hotkey_trace(
-            "pending_hotkey_start_launching",
-            previous_session_id=self.recording_session_id,
-            target=self._hotkey_target_snapshot(target),
-        )
-        self.hotkey_ignore_until = max(
-            self.hotkey_ignore_until,
-            time.monotonic() + HOTKEY_START_GUARD_SECONDS,
-        )
-        self.root.after(50, lambda target=target: self.start_recording("hotkey", target))
-
-    def _drain_worker_queue(self) -> None:
-        try:
-            while True:
-                msg_type, payload = self.worker_queue.get_nowait()
-                if msg_type in {
-                    "stream_finished",
-                    "stream_finish_timeout",
-                    "error",
-                    "global_hotkey_pressed",
-                    "external_toggle_recording",
-                    "external_show_window",
-                    "external_hide_window",
-                    "external_exit",
-                }:
-                    self.log_hotkey_trace("worker_queue_drained_message", message_type=msg_type, payload=str(payload)[:500])
-                self._handle_worker_message(msg_type, payload)
-        except queue.Empty:
-            pass
-
-    def _poll_recording_state_watchdog(self) -> None:
-        try:
-            self._repair_idle_recording_state("watchdog")
-        except Exception as exc:
-            log_exception("Recording state watchdog failed", exc)
-        try:
-            self.root.after(1000, self._poll_recording_state_watchdog)
-        except Exception:
-            pass
-
-    def _poll_worker_queue(self) -> None:
-        self._drain_worker_queue()
-        self.root.after(100, self._poll_worker_queue)
