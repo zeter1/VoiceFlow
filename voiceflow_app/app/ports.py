@@ -6,6 +6,7 @@ without importing Tkinter, pystray or other desktop implementations.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable, Optional, Protocol
 
 
@@ -50,3 +51,22 @@ class TrayPort(Protocol):
 
 NotificationFactory = Callable[[object], NotificationPort]
 TrayFactory = Callable[[object], TrayPort]
+
+
+@dataclass(frozen=True)
+class DeliveryResult:
+    ok: bool
+    code: str = ""
+    error: str = ""
+    foreground_hwnd: Optional[int] = None
+    focus_hwnd: Optional[int] = None
+
+
+class TextInsertionPort(Protocol):
+    def paste_current(self, text: str) -> DeliveryResult:
+        ...
+
+
+class VoiceActionPort(Protocol):
+    def execute(self, command: dict[str, object]) -> DeliveryResult:
+        ...

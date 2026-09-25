@@ -16,6 +16,8 @@ class CompositionTests(unittest.TestCase):
         cleaner = FakeService()
         notification_factory = lambda root: ("notification", root)
         tray_factory = lambda app: ("tray", app)
+        text_inserter = FakeService()
+        voice_action_executor = FakeService()
 
         services = ApplicationServices(
             recorder=recorder,
@@ -23,11 +25,15 @@ class CompositionTests(unittest.TestCase):
             cleaner=cleaner,
             notification_factory=notification_factory,
             tray_factory=tray_factory,
+            text_inserter=text_inserter,
+            voice_action_executor=voice_action_executor,
         )
 
         self.assertIs(services.recorder, recorder)
         self.assertIs(services.transcriber, transcriber)
         self.assertIs(services.cleaner, cleaner)
+        self.assertIs(services.text_inserter, text_inserter)
+        self.assertIs(services.voice_action_executor, voice_action_executor)
         self.assertEqual(services.notification_factory("root"), ("notification", "root"))
         self.assertEqual(services.tray_factory("app"), ("tray", "app"))
 

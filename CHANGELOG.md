@@ -120,3 +120,14 @@
 - Fixed a real metadata propagation bug: StreamResultPayload.commit_meta (sentence pause, forced commit, Whisper sentence end) is now passed into the insertion planner instead of being dropped before punctuation-at-paste.
 - Exact paste payload (including trailing separator), raw-vs-cleaned selection and command-vs-text separation are regression-tested without Tk or Windows APIs.
 - Worker engine now receives cleanup/dedupe callbacks directly from RealtimeTextPipeline, keeping one text-policy owner across recognition and insertion stages.
+
+## 2026-09-25 — Architecture 2.8: Realtime Delivery Ports & Side-Effect Isolation
+
+- Added stdlib-only TextInsertionPort / VoiceActionPort plus structured DeliveryResult.
+- Added desktop_delivery.py as the concrete clipboard/current-target/pyautogui adapter boundary with injectable seams for offline tests.
+- Added headless app/realtime_delivery.py controller; realtime insertion and voice-command execution now flow through injected ports instead of importing desktop APIs in streaming.py.
+- ApplicationServices now composes delivery ports alongside recorder/transcriber/cleaner/notification/tray services.
+- Successful paste remains the only point after which HeadlessSessionController records committed text; failed delivery returns no committed text.
+- Removed dead pre-realtime final-result pipeline: unused _process_audio_worker, RESULT/ERROR queue kinds/dispatch branches and unused asynchronous stream-finish queue finalizer.
+- app/streaming.py no longer imports pyautogui, Windows target helpers or worker-message producers for legacy finalization.
+- Added fake-backed tests for exact paste forwarding, failed-paste commit safety, voice-command reset metadata, whitespace voice payloads, clipboard fallback retention and key/hotkey/sequence delivery.

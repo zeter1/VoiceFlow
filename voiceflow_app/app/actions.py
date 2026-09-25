@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import platform
 import sys
-import time
 import traceback
 import tkinter as tk
 from tkinter import messagebox
@@ -36,9 +35,7 @@ from ..diagnostics import (
 from ..hotkey_config import normalize_hotkey, pretty_hotkey
 from ..settings import SettingsStore
 from ..windows import (
-    get_paste_target,
     is_windows_startup_enabled,
-    send_ctrl_v_native,
     set_windows_startup_enabled,
 )
 
@@ -49,91 +46,6 @@ class ActionsMixin:
 
     def get_clean_text(self) -> str:
         return self.clean_text.get("1.0", tk.END).strip()
-
-    def get_text_for_insertion(self) -> str:
-        if self.insert_edited_text_var.get():
-            return self.get_clean_text()
-        return self.get_raw_text()
-
-    def copy_result(self, show_messages: bool = True, edited: bool = True) -> bool:
-        text = self.get_clean_text() if edited else self.get_raw_text()
-        if not text:
-            log_warning("Copy requested with empty text", edited=edited)
-            if show_messages:
-                messagebox.showinfo(APP_NAME, "Нет текста для копирования.")
-            return False
-        if pyperclip is None:
-            log_warning("Copy failed because pyperclip is not installed", edited=edited)
-            if show_messages:
-                messagebox.showerror(APP_NAME, "Не установлен pyperclip. Выполни: pip install pyperclip")
-            return False
-        pyperclip.copy(text)
-        self.status_var.set("Скопировано")
-        log_info("Text copied to clipboard", edited=edited, chars=len(text))
-        return True
-
-    def paste_text_to_current_target(self, text: str, show_messages: bool = True) -> bool:
-        """Copy provided text and paste it into the currently focused field/window.
-
-        Important realtime behavior: do not restore the window that was active
-        when dictation started. The user can move the caret to another app or
-        another input field while recording, and the next chunk will be inserted
-        exactly there.
-        """
-        text = str(text or "")
-        # Whitespace-only text is valid for voice commands: "новая строка",
-        # "новый абзац", "пробел" and "табуляция". Only a truly empty
-        # string should be rejected.
-        if text == "":
-            log_warning("Paste requested with empty text")
-            if show_messages:
-                messagebox.showinfo(APP_NAME, "Нет текста для вставки.")
-            return False
-        if pyperclip is None:
-            log_warning("Paste failed because pyperclip is not installed")
-            if show_messages:
-                messagebox.showerror(
-                    APP_NAME,
-                    "Для вставки нужен pyperclip. Выполни: pip install pyperclip",
-                )
-            return False
-
-        try:
-            # Copy first, then send Ctrl+V to the currently active field.
-            # No SetForegroundWindow/restore call is used here on purpose.
-            current_target = get_paste_target()
-            pyperclip.copy(text)
-            time.sleep(0.025)
-            if not send_ctrl_v_native():
-                raise RuntimeError("Не удалось отправить Ctrl+V")
-            self.status_var.set("Вставлено")
-            log_info(
-                "Text pasted to current target",
-                chars=len(text),
-                current_foreground_hwnd=current_target.foreground_hwnd,
-                current_focus_hwnd=current_target.focus_hwnd,
-            )
-            log_category(
-                "insertion",
-                "paste_success",
-                chars=len(text),
-                current_foreground_hwnd=current_target.foreground_hwnd,
-                current_focus_hwnd=current_target.focus_hwnd,
-            )
-            return True
-        except Exception as exc:
-            log_exception("Could not paste text to current target", exc, chars=len(text))
-            log_category("insertion", "paste_failed", chars=len(text), error=str(exc))
-            # Keep text in clipboard for manual Ctrl+V.
-            if show_messages:
-                self._show_error("Не удалось вставить текст", exc)
-            else:
-                print("Не удалось вставить текст", exc, file=sys.stderr)
-            return False
-
-    def paste_text_to_saved_target(self, text: str, show_messages: bool = True) -> bool:
-        """Compatibility wrapper: realtime insertion now follows the current cursor."""
-        return self.paste_text_to_current_target(text, show_messages=show_messages)
 
     def paste_result_to_saved_target(self, show_messages: bool = True) -> bool:
         """Copy chosen text and paste it into the currently focused field/window."""

@@ -9,26 +9,18 @@ import re
 import threading
 import time
 import tkinter as tk
-from pathlib import Path
 from typing import Optional
 
-from ..config import (
-    STREAM_FINAL_CHUNK_ON_STOP,
-    STREAM_FINISH_TIMEOUT_SECONDS,
-)
-from ..dependencies import pyautogui
+from ..config import STREAM_FINAL_CHUNK_ON_STOP
 from ..diagnostics import (
     log_category,
     log_dictation_text,
-    log_exception,
     log_info,
     log_warning,
 )
 from ..settings import RuntimeSettings
-from ..worker_messages import WorkerMessageKind, put_worker_message
 from .realtime_text_pipeline import RealtimeInsertionPlan, RealtimeTextConfig
 from .realtime_worker import RealtimeWorkerConfig, RealtimeWorkerEngine
-from ..windows import PasteTarget, get_paste_target
 from ..core.realtime_policy import build_realtime_timing
 
 
@@ -100,42 +92,6 @@ class StreamingMixin:
             log_info("Waiting for realtime streaming worker to finish", session_id=self.recording_session_id)
             self.streaming_thread.join()
             self.streaming_thread = None
-
-    def _finish_streaming_after_stop_async(
-        self,
-        session_id: int,
-        finishing_thread: Optional[threading.Thread],
-    ) -> None:
-        def waiter() -> None:
-            finish_message_sent = False
-            try:
-                if finishing_thread is not None and finishing_thread.is_alive():
-                    log_info("Waiting for realtime streaming worker in background", session_id=session_id)
-                    finishing_thread.join(timeout=STREAM_FINISH_TIMEOUT_SECONDS)
-                    if finishing_thread.is_alive():
-                        log_warning(
-                            "Realtime streaming worker finish timed out; releasing UI",
-                            session_id=session_id,
-                            timeout_seconds=STREAM_FINISH_TIMEOUT_SECONDS,
-                        )
-                        put_worker_message(
-                            self.worker_queue,
-                            WorkerMessageKind.STREAM_FINISH_TIMEOUT,
-                            session_id,
-                        )
-                        finish_message_sent = True
-                        return
-            except BaseException as exc:
-                log_exception("Background wait for realtime worker failed", exc, session_id=session_id)
-            finally:
-                if not finish_message_sent:
-                    put_worker_message(
-                        self.worker_queue,
-                        WorkerMessageKind.STREAM_FINISHED,
-                        session_id,
-                    )
-
-        threading.Thread(target=waiter, name="voiceflow-stream-finalizer", daemon=True).start()
 
     def _stream_quality(self, runtime_settings: RuntimeSettings) -> str:
         profile = runtime_settings.realtime_speed_profile
@@ -219,53 +175,6 @@ class StreamingMixin:
             self._show_recording_notification(force_recreate=False)
         self.timer_job = self.root.after(1000, self._update_timer)
 
-    def _process_audio_worker(self, wav_path: Path, origin: str, runtime_settings: RuntimeSettings) -> None:
-        try:
-            raw = self.transcriber.transcribe(
-                wav_path,
-                runtime_settings.language,
-                model_name=runtime_settings.whisper_model,
-                quality=runtime_settings.recognition_quality,
-                custom_terms=runtime_settings.custom_terms,
-                use_vad_filter=runtime_settings.use_vad_filter,
-                device=runtime_settings.inference_device,
-                compute_type=runtime_settings.compute_type,
-                streaming=False,
-            )
-            cleaned = self.cleaner.clean(
-                raw,
-                runtime_settings.mode,
-                runtime_settings.language,
-                custom_terms=runtime_settings.custom_terms,
-                deep_grammar=runtime_settings.deep_grammar,
-            )
-            log_dictation_text(
-                "final_result",
-                session_id=getattr(self, "recording_session_id", None),
-                origin=origin,
-                mode=runtime_settings.mode,
-                raw_text=raw,
-                cleaned_text=cleaned,
-                model=runtime_settings.whisper_model,
-                language=runtime_settings.language,
-                device=runtime_settings.inference_device,
-                compute_type=runtime_settings.compute_type,
-                deep_grammar=runtime_settings.deep_grammar,
-            )
-            if self.privacy_var.get():
-                try:
-                    wav_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-            put_worker_message(
-                self.worker_queue,
-                WorkerMessageKind.RESULT,
-                (raw, cleaned, origin),
-            )
-        except BaseException as exc:
-            log_exception("Audio processing worker crashed", exc, wav_path=wav_path, origin=origin)
-            put_worker_message(self.worker_queue, WorkerMessageKind.ERROR, exc)
-
     def _reset_stream_message_state(self, session_id: Optional[int], reason: str) -> None:
         self.session_controller.reset_commits()
         self.stream_context_reset_event.set()
@@ -309,7 +218,7 @@ class StreamingMixin:
                 forced_commit=punctuation.forced_commit,
                 selected_source=insertion_plan.selected_source,
             )
-            ok = self.paste_text_to_current_target(insertion_plan.paste_text, show_messages=False)
+            delivery = self.realtime_delivery.deliver_insertion(insertion_plan)
             log_dictation_text(
                 "stream_insert",
                 session_id=session_id,
@@ -320,17 +229,27 @@ class StreamingMixin:
                 inserted_text=insertion_plan.text,
                 selected_source=insertion_plan.selected_source,
                 is_final=is_final,
-                paste_ok=ok,
+                paste_ok=delivery.ok,
+                delivery_code=delivery.code,
+                delivery_error=delivery.error,
+                current_foreground_hwnd=delivery.foreground_hwnd,
+                current_focus_hwnd=delivery.focus_hwnd,
                 commit_meta=commit_meta or {},
             )
-            if ok:
-                self.session_controller.record_commit(insertion_plan.text)
+            if delivery.ok:
+                self.session_controller.record_commit(delivery.committed_text)
                 if self.recorder.is_recording:
                     self._show_recording_notification(force_recreate=False)
                 else:
                     message = "✅ Финальный фрагмент вставлен" if is_final else "⚡ Стабильный фрагмент вставлен"
                     self.notify(message, kind="success", duration_ms=1200 if is_final else 900)
             else:
+                log_warning(
+                    "Realtime text delivery failed",
+                    code=delivery.code,
+                    error=delivery.error,
+                    session_id=session_id,
+                )
                 self.notify("⚠ Фрагмент распознан, но не вставился", kind="warning", duration_ms=1600)
 
     def _execute_voice_control_command(
@@ -342,75 +261,47 @@ class StreamingMixin:
         cleaned_text: str,
         origin: str,
     ) -> bool:
-        kind = str(command.get("kind", ""))
-        value = command.get("value")
-        label = str(command.get("label", command.get("phrase", "voice command")))
-        phrase = str(command.get("phrase", ""))
-        ok = False
-
-        if kind == "text":
-            ok = self.paste_text_to_current_target(str(value or ""), show_messages=False)
-        else:
-            current_target = get_paste_target()
-            if pyautogui is not None:
-                try:
-                    # Voice control hotkeys/keys should also act in the current
-                    # field under the cursor, not in the window where recording started.
-                    time.sleep(0.025)
-
-                    def run_action(action_kind: str, action_value: object) -> None:
-                        if action_kind == "key":
-                            pyautogui.press(str(action_value))
-                        elif action_kind == "hotkey" and isinstance(action_value, (tuple, list)):
-                            pyautogui.hotkey(*(str(part) for part in action_value))
-                        else:
-                            raise ValueError(f"Unsupported voice action: {action_kind}")
-
-                    if kind in {"key", "hotkey"}:
-                        run_action(kind, value)
-                        ok = True
-                    elif kind == "sequence" and isinstance(value, (tuple, list)):
-                        for step in value:
-                            if not isinstance(step, (tuple, list)) or len(step) != 2:
-                                raise ValueError(f"Bad voice action step: {step!r}")
-                            run_action(str(step[0]), step[1])
-                            time.sleep(0.025)
-                        ok = True
-                    log_info(
-                        "Voice control key action sent to current target",
-                        command=phrase,
-                        kind=kind,
-                        current_foreground_hwnd=current_target.foreground_hwnd,
-                        current_focus_hwnd=current_target.focus_hwnd,
-                    )
-                except Exception as exc:
-                    log_exception("Voice control key action failed", exc, command=phrase, kind=kind, value=value)
-            elif pyautogui is None:
-                log_warning("Voice control key action skipped because pyautogui is not installed", command=phrase, kind=kind)
-
+        delivery = self.realtime_delivery.execute_voice_command(command)
         log_info(
             "Voice control command handled",
-            command=phrase,
-            action=label,
-            kind=kind,
-            ok=ok,
+            command=delivery.phrase,
+            action=delivery.label,
+            kind=delivery.kind,
+            ok=delivery.ok,
             session_id=session_id,
+            current_foreground_hwnd=delivery.foreground_hwnd,
+            current_focus_hwnd=delivery.focus_hwnd,
+            delivery_code=delivery.code,
         )
+        if not delivery.ok:
+            log_warning(
+                "Voice control action failed",
+                command=delivery.phrase,
+                kind=delivery.kind,
+                code=delivery.code,
+                error=delivery.error,
+            )
         log_dictation_text(
             "voice_command",
             session_id=session_id,
             origin=origin,
             raw_text=raw_text,
             cleaned_text=cleaned_text,
-            command=phrase,
-            action=label,
-            ok=ok,
+            command=delivery.phrase,
+            action=delivery.label,
+            ok=delivery.ok,
+            delivery_code=delivery.code,
+            delivery_error=delivery.error,
         )
-        if ok:
-            self.status_var.set(f"Команда: {label}")
-            self.notify(f"🎛 Команда: {label}", kind="success", duration_ms=900)
-            if command.get("reset_message_context"):
-                self._reset_stream_message_state(session_id, label)
+        if delivery.ok:
+            self.status_var.set(f"Команда: {delivery.label}")
+            self.notify(f"🎛 Команда: {delivery.label}", kind="success", duration_ms=900)
+            if delivery.reset_message_context:
+                self._reset_stream_message_state(session_id, delivery.label)
         else:
-            self.notify(f"⚠ Команда распознана, но не выполнена: {label}", kind="warning", duration_ms=1800)
-        return ok
+            self.notify(
+                f"⚠ Команда распознана, но не выполнена: {delivery.label}",
+                kind="warning",
+                duration_ms=1800,
+            )
+        return delivery.ok

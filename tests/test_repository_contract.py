@@ -15,6 +15,7 @@ EXPECTED_MODULES = {
     "worker_messages.py",
     "config.py",
     "dependencies.py",
+    "desktop_delivery.py",
     "audio_devices.py",
     "cuda_runtime.py",
     "diagnostics.py",
@@ -43,6 +44,7 @@ EXPECTED_MODULES = {
     "app/controls.py",
     "app/hotkeys.py",
     "app/recording.py",
+    "app/realtime_delivery.py",
     "app/realtime_worker.py",
     "app/realtime_text_pipeline.py",
     "app/streaming.py",
@@ -221,6 +223,35 @@ class RepositoryContractTests(unittest.TestCase):
                 imported.add(node.module)
         forbidden = {"tkinter", "dependencies", "voiceflow_app.dependencies", "windows", "pyautogui"}
         self.assertFalse(sorted(imported & forbidden), f"Realtime text pipeline must stay headless: {sorted(imported & forbidden)}")
+
+    def test_realtime_delivery_uses_ports_and_streaming_has_no_desktop_delivery_imports(self) -> None:
+        delivery = (PACKAGE / "app" / "realtime_delivery.py").read_text(encoding="utf-8")
+        streaming = (PACKAGE / "app" / "streaming.py").read_text(encoding="utf-8")
+        actions = (PACKAGE / "app" / "actions.py").read_text(encoding="utf-8")
+        dispatch = (PACKAGE / "app" / "worker_dispatch.py").read_text(encoding="utf-8")
+        messages = (PACKAGE / "worker_messages.py").read_text(encoding="utf-8")
+        self.assertLessEqual(len(streaming.splitlines()), 330)
+        self.assertLessEqual(len(delivery.splitlines()), 120)
+        self.assertNotIn("pyautogui", streaming)
+        self.assertNotIn("get_paste_target", streaming)
+        self.assertNotIn("send_ctrl_v_native", streaming)
+        self.assertNotIn("paste_text_to_current_target", streaming)
+        self.assertNotIn("get_paste_target", actions)
+        self.assertNotIn("send_ctrl_v_native", actions)
+        self.assertNotIn("def _process_audio_worker", streaming)
+        self.assertNotIn('msg_type == "result"', dispatch)
+        self.assertNotIn('msg_type == "error"', dispatch)
+        self.assertNotIn("STREAM_FINISHED", messages)
+        self.assertNotIn("STREAM_FINISH_TIMEOUT", messages)
+        tree = ast.parse(delivery, filename="realtime_delivery.py")
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+        forbidden = {"tkinter", "dependencies", "voiceflow_app.dependencies", "windows", "pyautogui"}
+        self.assertFalse(sorted(imported & forbidden), f"Realtime delivery controller must stay headless: {sorted(imported & forbidden)}")
 
     def test_realtime_worker_engine_is_headless(self) -> None:
         path = PACKAGE / "app" / "realtime_worker.py"

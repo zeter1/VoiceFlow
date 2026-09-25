@@ -30,6 +30,7 @@ from .actions import ActionsMixin
 from .controls import ControlsMixin
 from .hotkeys import HotkeyMixin
 from .recording import RecordingMixin
+from .realtime_delivery import RealtimeDeliveryController
 from .realtime_text_pipeline import RealtimeTextPipeline
 from .streaming import StreamingMixin
 from .worker_dispatch import WorkerDispatchMixin
@@ -99,7 +100,13 @@ class VoiceFlowOfflineApp(
         self.recorder = self.services.recorder
         self.transcriber = self.services.transcriber
         self.cleaner = self.services.cleaner
+        self.text_inserter = self.services.text_inserter
+        self.voice_action_executor = self.services.voice_action_executor
         self.realtime_text_pipeline = RealtimeTextPipeline(self.cleaner)
+        self.realtime_delivery = RealtimeDeliveryController(
+            self.text_inserter,
+            self.voice_action_executor,
+        )
         self.notifications = self.services.notification_factory(root)
         self._load_notification_position_from_settings()
         self.notifications.on_position_changed = self._on_notification_position_changed

@@ -1,16 +1,16 @@
 # Изменения Windows-сборки
 
-## Architecture 2.7 — Headless Realtime Text Commit & Insertion Decisions
+## Architecture 2.8 — Realtime Delivery Ports & Side-Effect Isolation
 
-- Очистка realtime текста, dedupe, punctuation-at-commit, trailing voice-command split и выбор точного текста для вставки вынесены в отдельный headless `RealtimeTextPipeline`.
-- `app/streaming.py` больше не содержит набор proxy-обёрток вокруг pure realtime text logic; там остаются UI, реальная вставка и выполнение voice-control side effects.
-- Worker dispatch сначала получает тестируемый `RealtimeResultPlan`, и только затем меняет UI или вставляет текст.
-- Исправлена потеря `commit_meta`: фактические sentence-pause / forced-commit / Whisper-end metadata теперь доходят до punctuation decision перед вставкой.
-- Добавлены offline regression tests для exact paste payload, raw-vs-cleaned selection, continuation casing, pause punctuation, dedupe, preview/no-paste и trailing send-command separation.
-- Пользовательская логика вставки и voice commands сохранена; изменён ownership и исправлена передача metadata.
+- Windows paste и voice-action side effects вынесены за явные `TextInsertionPort` / `VoiceActionPort`.
+- Добавлен concrete `desktop_delivery.py` для clipboard/current-target/Ctrl+V/pyautogui и headless `RealtimeDeliveryController` для application orchestration.
+- `app/streaming.py` больше напрямую не импортирует pyautogui, Windows focus helpers или native paste sender.
+- Успешный paste остаётся единственным моментом, когда текст записывается как committed; failed paste не загрязняет realtime dedupe state.
+- Добавлены fake-backed regression tests для exact paste payload, failed delivery, whitespace voice commands, key/hotkey/sequence actions и reset-message-context metadata.
+- Удалён подтверждённо мёртвый legacy final-result путь (`_process_audio_worker`, RESULT/ERROR queue handling и старый async finish-finalizer), который не имел вызывающих production paths после перехода на realtime-only stop.
 
 ## Проверка сборки
 
 GitHub Actions выполняет compile, полный offline regression/architecture suite, PyInstaller build, packaged `VoiceFlow.exe --self-test`, ZIP/SHA-256 и публикацию prerelease.
 
-Реальный микрофон, Whisper/CUDA, global hotkey и вставка в живые Windows-приложения требуют отдельной интерактивной runtime-проверки.
+Реальный микрофон, Whisper/CUDA, global hotkey, clipboard/focus races и вставка в конкретные Windows-приложения требуют отдельной интерактивной runtime-проверки.

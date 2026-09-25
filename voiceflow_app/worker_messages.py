@@ -14,11 +14,7 @@ class WorkerMessageKind(str, Enum):
     EXTERNAL_HIDE_WINDOW = "external_hide_window"
     EXTERNAL_EXIT = "external_exit"
     STREAM_RESULT = "stream_result"
-    RESULT = "result"
     STREAM_WARNING = "stream_warning"
-    STREAM_FINISHED = "stream_finished"
-    STREAM_FINISH_TIMEOUT = "stream_finish_timeout"
-    ERROR = "error"
 
 
 @dataclass(frozen=True)
