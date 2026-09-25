@@ -165,6 +165,9 @@ class HeadlessSessionController:
             raise
         self._phase = SessionPhase.IDLE
 
+    def discard_frames(self) -> None:
+        self.recorder.discard_frames()
+
     def abort_start(self) -> None:
         if self._phase is SessionPhase.STARTING:
             self.recover_idle()

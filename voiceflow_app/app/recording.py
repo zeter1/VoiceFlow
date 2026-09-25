@@ -335,7 +335,7 @@ class RecordingMixin:
             self.processing_origin = origin
             log_info("Recording stop requested", origin=origin, session_id=self.recording_session_id)
             stopped_session_id = self.recording_session_id
-            self.session_controller.stop_capture(discard_frames=True)
+            self.session_controller.stop_capture(discard_frames=False)
             finishing_thread = self.streaming_thread
             self._stop_realtime_streaming(wait=False)
             self.last_wav_path = None
@@ -351,6 +351,7 @@ class RecordingMixin:
             self.pending_hotkey_start_requested = False
             self.pending_hotkey_start_target = None
             self.streaming_thread = None
+            self.session_controller.discard_frames()
             self.record_btn.config(text="● Начать запись", state=tk.NORMAL)
             self.status_var.set("Готово")
             self.timer_var.set("00:00")

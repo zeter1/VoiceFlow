@@ -85,3 +85,9 @@
 - Добавлены headless tests start -> frames -> transcription -> commit -> stop, double-start race, stop/restart, failed-start recovery, stop failure и finalizing race.
 - Исправлен latent Architecture 2.3 regression: recording warm-up больше не вызывает удалённый private _windows_missing_cuda_dlls; добавлен public backend_candidates contract.
 - Packaged self-test теперь строит default ApplicationServices и проверяет composition graph без открытия GUI.
+
+### Architecture 2.4 stop-order preservation
+
+- Session controller теперь умеет раздельно stop capture и discard buffered frames.
+- RecordingMixin сохраняет прежний realtime порядок: stop microphone -> signal streaming worker -> discard frames, чтобы не увеличивать риск потери последнего доступного chunk при stop race.
+- Добавлен regression test на deferred frame discard.

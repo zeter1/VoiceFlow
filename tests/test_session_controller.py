@@ -126,6 +126,15 @@ class HeadlessSessionControllerTests(unittest.TestCase):
             controller.start_capture()
         self.assertEqual(recorder.start_calls, 1)
 
+    def test_stop_can_preserve_frames_until_worker_stop_signal(self):
+        controller, recorder, _transcriber, _cleaner = self.make_controller()
+        controller.start_capture()
+        controller.stop_capture(discard_frames=False)
+        self.assertEqual(recorder.stop_calls, 1)
+        self.assertEqual(recorder.discard_calls, 0)
+        controller.discard_frames()
+        self.assertEqual(recorder.discard_calls, 1)
+
     def test_stop_then_restart_increments_session_and_resets_commits(self):
         controller, _recorder, _transcriber, _cleaner = self.make_controller()
         self.assertEqual(controller.start_capture(), 1)

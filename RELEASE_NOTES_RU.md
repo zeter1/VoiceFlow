@@ -9,6 +9,8 @@
 - Исправлена скрытая warm-up проблема после Architecture 2.3: runtime больше не обращается к удалённому private CUDA helper.
 - Packaged self-test проверяет новый composition graph до запуска Tk GUI.
 
+- Сохранён прежний безопасный порядок остановки realtime: сначала останавливается capture и сигнализируется streaming worker, затем очищаются buffered frames.
+
 ## Проверка сборки
 
 GitHub Actions выполняет compile, offline regression/architecture tests, PyInstaller build, bounded packaged VoiceFlow.exe --self-test, ZIP/SHA-256 и публикацию prerelease.
