@@ -76,7 +76,7 @@ py voiceflow.py
 1. Запустите VoiceFlow.
 2. В настройках выберите микрофон, модель Whisper и режим CPU или CUDA.
 3. Установите курсор в любое поле ввода — например, в браузере, Telegram, ChatGPT, документе или редакторе кода.
-4. Нажмите глобальную горячую клавишу, по умолчанию рекомендуется F9.
+4. Нажмите глобальную горячую клавишу. Для новой конфигурации базовое значение — Ctrl+Shift+Space; клавишу можно изменить в интерфейсе.
 5. Говорите обычным голосом.
 6. Стабильные распознанные фрагменты будут вставляться в активное поле по мере диктовки.
 7. Можно переключиться в другое приложение или поле — следующие фрагменты пойдут уже туда.
@@ -106,7 +106,7 @@ Windows text insertion
 active application
 ```
 
-Подробно границы подсистем, lifecycle диктовки, CPU/CUDA paths, deduplication и insertion layer описаны в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Подробно границы подсистем, lifecycle диктовки, CPU/CUDA paths, deduplication и insertion layer описаны в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Для ChatGPT/Codex есть отдельная карта: [`AGENTS.md`](AGENTS.md) + [`docs/AI_CONTEXT.md`](docs/AI_CONTEXT.md).
 
 ## Конфиденциальность
 
@@ -169,7 +169,7 @@ voiceflow_settings/settings.json
 ## Проверка проекта
 
 ```powershell
-python -m compileall -q voiceflow.py tests
+python -m compileall -q voiceflow.py voiceflow_app tests
 python -m unittest discover -s tests -v
 ```
 
@@ -181,12 +181,15 @@ CI выполняет syntax/compile и offline repository-contract regression t
 - CUDA path требует совместимой локальной NVIDIA/CUDA/cuDNN-конфигурации;
 - вставка текста и глобальные hotkeys зависят от поведения конкретного Windows-приложения;
 - CI не подтверждает работу реального микрофона, CUDA, tray, hotkeys и вставки в сторонние приложения — эти сценарии требуют runtime-проверки в Windows;
-- основной `voiceflow.py` остаётся крупным legacy-модулем; дальнейшая безопасная декомпозиция является отдельной задачей и не маскируется документацией.
+- `voiceflow.py` теперь является тонким совместимым entrypoint; реализация физически разделена по runtime/services/ui/app, а большое окно разбито на mixin-модули по ответственности.
 
 ## Документация и поддержка
 
 - [Архитектура VoiceFlow](docs/ARCHITECTURE.md)
-- дополнительные инструкции находятся в каталоге [`docs/`](docs/)
+- [Карта проекта для AI/Codex](docs/AI_CONTEXT.md)
+- [Разработка и проверка](docs/DEVELOPMENT.md)
+- [Repo-инструкции для AI-агентов](AGENTS.md)
+- дополнительные пользовательские инструкции находятся в каталоге [`docs/`](docs/)
 - [Security and privacy](SECURITY.md)
 - [Поддержка и диагностика](SUPPORT.md)
 

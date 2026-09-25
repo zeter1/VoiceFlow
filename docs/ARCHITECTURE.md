@@ -1,254 +1,72 @@
 # Архитектура VoiceFlow
 
-Этот документ описывает логические подсистемы VoiceFlow и основной поток данных от микрофона до вставки распознанного текста в активное Windows-приложение.
+VoiceFlow физически разделён по ответственности, чтобы сохранить realtime behavior и снизить blast radius изменений.
 
-## Общая схема
+## Dependency map
 
-```text
-microphone
-   ↓
-audio capture
-   ↓
-realtime buffering / chunking
-   ↓
-worker queue
-   ↓
-faster-whisper inference
-   ↓
-stability / deduplication
-   ↓
-voice-command processing
-   ↓
-Windows text insertion
-   ↓
-active application
-```
+voiceflow.py -> voiceflow_app.entrypoint -> app/main_window.py -> app mixins -> context.py -> runtime + services + ui infrastructure.
 
-Параллельно работают UI, глобальные hotkeys, tray/notification layer, settings persistence и диагностика.
+voiceflow.py является только launcher и не должен снова накапливать бизнес-логику.
 
-## 1. Application state and settings
+## Runtime
 
-VoiceFlow хранит пользовательские настройки отдельно от исходного кода. К ним относятся:
+voiceflow_app/runtime.py содержит пути logs/settings, structured diagnostics, dependency probing, single-instance lock, voice-command parsing, Windows startup/foreground/paste helpers, hotkey normalization/VK mapping и settings models/store.
 
-- выбранный микрофон;
-- модель Whisper;
-- язык;
-- CPU/CUDA режим;
-- compute type;
-- профиль real-time распознавания;
-- горячая клавиша;
-- параметры коррекции текста;
-- UI/notification preferences.
+При source-запуске APP_DIR остаётся корнем проекта. При frozen-запуске — каталогом VoiceFlow.exe.
 
-Рабочее состояние должно переживать перезапуск приложения без попадания пользовательских настроек в Git.
+## Services
 
-## 2. Audio capture
+services/audio.py — microphone capture и frame lifecycle.
+services/transcription.py — lazy faster-whisper model, CPU/CUDA/compute policy, warm-up/inference.
+services/text_cleaner.py — punctuation, fillers, typo repair, sentence flow, term preservation, optional LanguageTool and output modes.
 
-Микрофон является источником real-time данных.
+Audio callback не выполняет Whisper inference. CUDA/model/audio failures диагностируются отдельно.
 
-Задачи capture layer:
+## UI infrastructure
 
-- выбрать корректное устройство;
-- получать аудио без блокировки UI;
-- накапливать данные в управляемые фрагменты;
-- корректно останавливать capture при завершении сессии;
-- передавать работу дальше через очередь, а не выполнять тяжёлый inference в callback аудио.
+ui/notifications.py и ui/tray.py отвечают только за presentation/lifecycle своих UI components и не являются источником истины о recording state.
 
-## 3. Realtime buffering
+## Application composition
 
-Whisper эффективнее работает не с каждым отдельным аудиофреймом, а с осмысленными временными фрагментами.
+app/main_window.py собирает VoiceFlowOfflineApp.
+app/ui.py — widgets/state/notifications.
+app/controls.py — microphone/hotkey editor.
+app/hotkeys.py — registration, Windows polling, debounce and dispatch.
+app/recording.py — idle repair, start/stop, runtime snapshot, warm-up.
+app/streaming.py — chunk scheduling, speech stats, dedupe, realtime worker, queue and voice commands.
+app/actions.py — copy/paste, settings, window lifecycle and shutdown.
 
-Realtime layer балансирует:
+## Runtime data flow
 
-- задержку;
-- качество распознавания;
-- размер контекста;
-- количество повторного inference;
-- нагрузку CPU/GPU.
+AudioRecorder -> frames -> StreamingMixin worker -> LocalTranscriber -> stable fragment filters -> optional LocalTextCleaner/voice command -> ActionsMixin insertion -> active Windows target.
 
-Поэтому профили Faster / Balanced / Quality могут использовать разные интервалы и параметры обработки.
+## State/thread invariants
 
-## 4. Worker queue
+Conceptual state: idle -> starting -> recording -> stopping/finalizing -> idle.
+Hotkey only initiates transitions; heavy work stays out of callback.
+Tk updates occur through Tk/main-thread scheduling.
+Realtime confirmed fragments are inserted while recording; stop must not reinsert the complete transcript.
 
-Тяжёлое распознавание выполняется в фоновой работе.
+## Settings/privacy
 
-Очередь нужна, чтобы:
+AppSettings = persisted user configuration.
+RuntimeSettings = processing snapshot.
+SettingsStore = persistence owner.
 
-- UI и audio callback не зависали;
-- не запускать неконтролируемое число параллельных inference-задач;
-- иметь понятный lifecycle сессии;
-- диагностировать backlog и задержки;
-- корректно завершать обработку при остановке диктовки.
+voiceflow_settings and voiceflow_logs are runtime/private data and stay outside Git.
 
-## 5. faster-whisper inference
+## Verification boundary
 
-Inference layer отвечает за локальное распознавание речи.
+Offline CI: parse/compile + repository contracts.
+Package CI: dependencies + PyInstaller + packaged --self-test + ZIP/checksum/release.
+Real microphone, desktop hotkeys, tray, arbitrary target apps and user CUDA require Windows runtime evidence.
 
-Поддерживаются два основных пути:
+## Architecture rules
 
-### CPU
+Do not rebuild a giant voiceflow.py.
+Keep new behavior in the closest owner module.
+Do not make context.py a dumping ground.
+Prefer pure/testable helpers for parsing/dedupe/state decisions.
+Before cross-module state changes identify owner, invariant, failure semantics and verification route.
 
-Обычно используется `int8` и более лёгкая модель для приемлемой задержки.
-
-### NVIDIA CUDA
-
-Может использовать более крупные модели и compute type вроде `int8_float16`.
-
-При диагностике важно отделять:
-
-- загрузку модели;
-- доступность CUDA runtime;
-- ошибку аудиозахвата;
-- ошибку самого inference;
-- медленную обработку без фактического исключения.
-
-## 6. Stable fragments and deduplication
-
-Главная особенность VoiceFlow — подтверждённый текст вставляется **во время диктовки**, а не одним большим блоком после остановки.
-
-Это требует защиты от повторной вставки.
-
-Логика должна различать:
-
-- промежуточный результат;
-- уже подтверждённый/вставленный текст;
-- новую стабильную часть;
-- финальное завершение сессии.
-
-После остановки нельзя повторно вставлять весь transcript, если его стабильные части уже отправлялись в приложения.
-
-## 7. Voice commands
-
-Перед обычной вставкой распознанный текст может интерпретироваться как команда.
-
-Типы команд:
-
-- пунктуация;
-- новая строка / абзац;
-- Tab / Backspace;
-- удаление слова;
-- copy / paste / save;
-- навигация курсора;
-- очистка строки или поля.
-
-Command layer должен быть отделён концептуально от raw speech recognition: Whisper сообщает текст, а VoiceFlow решает, является ли этот текст обычным вводом или управляющим действием.
-
-## 8. Text cleanup
-
-Опциональная коррекция может использовать `language-tool-python`.
-
-Она не должна быть обязательным условием базовой диктовки: если дополнительная коррекция отключена или недоступна, основной pipeline распознавания и вставки должен продолжать работать.
-
-## 9. Windows insertion layer
-
-Распознанный текст должен попадать в приложение, которое находится в фокусе **в момент вставки**.
-
-Это позволяет в рамках одной диктовки переключаться между:
-
-- браузером;
-- Telegram;
-- ChatGPT;
-- документом;
-- редактором кода;
-- другим полем ввода.
-
-Insertion layer использует основной Windows-совместимый способ и резервные варианты для приложений, где один метод работает нестабильно.
-
-Важная системная особенность: Windows может блокировать взаимодействие процесса с окном, запущенным с более высоким уровнем привилегий. Поэтому уровни прав VoiceFlow и целевого приложения иногда должны совпадать.
-
-## 10. Global hotkeys
-
-Глобальная горячая клавиша управляет lifecycle сессии:
-
-```text
-idle
-  ↓ hotkey
-starting
-  ↓
-recording
-  ↓ hotkey
-stopping
-  ↓
-idle
-```
-
-Hotkey layer не должен напрямую выполнять тяжёлую работу. Его задача — безопасно инициировать переход состояния.
-
-## 11. Notification and tray
-
-UI/notification layer показывает пользователю, что запись активна, но не должен быть источником истины о состоянии pipeline.
-
-Системный tray позволяет приложению работать в фоне, а положение уведомления может сохраняться между запусками.
-
-## 12. Diagnostics
-
-Диагностика разделена по зонам, чтобы при проблеме не читать один огромный общий лог.
-
-Отдельно полезно отслеживать:
-
-- hotkeys;
-- recording state;
-- audio capture;
-- worker queue;
-- realtime inference;
-- text insertion;
-- notification/UI;
-- crashes and unexpected exceptions.
-
-Последняя сессия доступна через `_last_run`, что упрощает получение именно тех данных, которые относятся к свежей проблеме.
-
-## 13. Privacy boundary
-
-После загрузки модели speech-to-text выполняется локально.
-
-Архитектурная граница проекта:
-
-```text
-microphone audio
-     ↓
-local VoiceFlow process
-     ↓
-local faster-whisper model
-     ↓
-recognized text
-     ↓
-local Windows application
-```
-
-Для базового распознавания OpenAI API key не требуется.
-
-## 14. CI boundary
-
-Лёгкий GitHub Actions workflow проверяет исходный Python-код без:
-
-- загрузки Whisper-моделей;
-- доступа к микрофону;
-- реального CUDA runtime;
-- глобальных hotkeys;
-- взаимодействия с Windows desktop.
-
-Эти аппаратно- и OS-зависимые сценарии требуют реального Windows-тестирования и не должны ошибочно считаться покрытыми только потому, что CI зелёный.
-
-## Технический долг и направление развития
-
-Текущая реализация исторически централизована в `voiceflow.py`. При дальнейшем росте естественными границами для физического разбиения на модули являются:
-
-```text
-voiceflow/
-├── audio/
-├── inference/
-├── realtime/
-├── commands/
-├── insertion/
-├── hotkeys/
-├── ui/
-├── diagnostics/
-└── settings/
-```
-
-Такой рефакторинг лучше выполнять после появления автоматизированных тестов вокруг стабильных фрагментов, deduplication, command parsing и state transitions, чтобы перенос кода не изменил поведение real-time pipeline.
-
-## Связанные документы
-
-- [Главный README](../README.md)
-- [Security and privacy](../SECURITY.md)
+See also: ../AGENTS.md, AI_CONTEXT.md, DEVELOPMENT.md, ../SECURITY.md.

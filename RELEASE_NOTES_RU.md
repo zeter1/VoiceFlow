@@ -1,11 +1,16 @@
 # Изменения Windows-сборки
 
-- Готовая Windows-сборка VoiceFlow теперь публикуется как постоянный GitHub Release.
-- Portable ZIP содержит `VoiceFlow.exe` и packaged runtime для `faster-whisper`, CTranslate2, PyAV, tray/clipboard/hotkey-зависимостей и LanguageTool-интеграции.
-- Перед публикацией CI запускает offline regression tests, собирает PyInstaller-дистрибутив и выполняет `--self-test` уже packaged EXE.
-- В релиз добавлен отдельный SHA-256 portable-архива.
-- README теперь прямо указывает, где скачать готовую Windows-версию и какие внешние условия остаются для Whisper-моделей и NVIDIA GPU.
+## Модульная архитектура VoiceFlow
 
-## Проверка
+- Внутренний монолит voiceflow.py разделён на пакет voiceflow_app: runtime, services, UI infrastructure и отдельные зоны main-window behavior.
+- voiceflow.py остаётся маленьким совместимым launcher, поэтому привычный запуск и PyInstaller entrypoint сохраняются.
+- Отдельно вынесены microphone capture, faster-whisper transcription, text cleanup, notifications и tray.
+- Realtime/hotkey/recording/insertion код разделён по ответственности для более безопасных исправлений и code review.
+- Сохранено прежнее расположение voiceflow_logs и voiceflow_settings для source и VoiceFlow.exe.
+- Добавлены structural regression tests и расширенная AI-oriented документация.
 
-CI подтверждает packaged imports/runtime на GitHub-hosted Windows runner без открытия GUI и микрофона. Реальная запись с пользовательского аудиоустройства, глобальные hotkeys, вставка в сторонние приложения, загрузка Whisper-модели и GPU-ускорение требуют runtime-проверки на целевом Windows-компьютере.
+## Проверка сборки
+
+GitHub Actions компилирует voiceflow.py + voiceflow_app + tests, запускает offline contracts, собирает portable VoiceFlow.exe, выполняет packaged --self-test и публикует ZIP + SHA-256.
+
+Реальный микрофон, глобальные hotkeys, вставка в сторонние приложения, загрузка Whisper-модели и CUDA на пользовательском GPU требуют отдельной Windows runtime-проверки.

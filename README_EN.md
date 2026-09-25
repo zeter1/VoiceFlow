@@ -67,7 +67,7 @@ py voiceflow.py
 1. Start VoiceFlow.
 2. Select the microphone, Whisper model, and CPU or CUDA mode.
 3. Place the cursor in any text field — for example a browser, Telegram, ChatGPT, document, or code editor.
-4. Press the global hotkey; F9 is the recommended default.
+4. Press the global hotkey. A fresh configuration uses Ctrl+Shift+Space by default, and the shortcut can be changed in the UI.
 5. Speak normally.
 6. Stable recognized fragments are inserted into the active field as dictation continues.
 7. You can switch to another application or field; subsequent fragments are inserted there.
@@ -97,7 +97,7 @@ Windows text insertion
 active application
 ```
 
-Subsystem boundaries, dictation lifecycle, CPU/CUDA paths, deduplication, and the insertion layer are described in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Subsystem boundaries, dictation lifecycle, CPU/CUDA paths, deduplication, and the insertion layer are described in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). AI/Codex navigation is documented in [`AGENTS.md`](AGENTS.md) and [`docs/AI_CONTEXT.md`](docs/AI_CONTEXT.md).
 
 ## Privacy
 
@@ -160,7 +160,7 @@ User settings and runtime logs are excluded from Git.
 ## Project verification
 
 ```powershell
-python -m compileall -q voiceflow.py tests
+python -m compileall -q voiceflow.py voiceflow_app tests
 python -m unittest discover -s tests -v
 ```
 
@@ -172,11 +172,14 @@ CI performs syntax/compile checks and offline repository-contract regression tes
 - the CUDA path requires a compatible local NVIDIA/CUDA/cuDNN environment;
 - text insertion and global hotkeys depend on the behavior of the target Windows application;
 - CI does not prove real microphone, CUDA, tray, hotkey, or third-party application insertion behavior — those scenarios require runtime verification on Windows;
-- the main `voiceflow.py` remains a large legacy module; further safe decomposition is a separate engineering task rather than something hidden by documentation.
+- `voiceflow.py` is now a thin compatibility entrypoint; implementation is split across runtime/services/ui/app boundaries, with main-window behavior divided into responsibility-focused mixins.
 
 ## Documentation and support
 
 - [VoiceFlow architecture](docs/ARCHITECTURE.md)
+- [AI/Codex repository map](docs/AI_CONTEXT.md)
+- [Development and verification](docs/DEVELOPMENT.md)
+- [Repository instructions for AI agents](AGENTS.md)
 - additional CUDA/cuDNN, voice-command, model, microphone, and diagnostic guidance is under [`docs/`](docs/)
 - [Security and privacy](SECURITY.md)
 - [Support and diagnostics](SUPPORT.md)

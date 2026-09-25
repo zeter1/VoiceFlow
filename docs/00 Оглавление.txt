@@ -55,3 +55,19 @@ VoiceFlow Offline — оглавление актуальных инструкц
 
 Установка всё что надо.txt
 - Установка Python, библиотек, CUDA/cuDNN и проверка зависимостей.
+
+
+Техническая документация для разработки и нейросетей
+====================================================
+
+ARCHITECTURE.md
+- Физическая архитектура, dependency/state/thread boundaries.
+
+AI_CONTEXT.md
+- Карта task -> owner file для ChatGPT/Codex, diagnostics и build/release.
+
+DEVELOPMENT.md
+- Команды проверки, evidence levels и release discipline.
+
+../AGENTS.md
+- Стабильные repo-инструкции и инварианты для AI coding agents.
