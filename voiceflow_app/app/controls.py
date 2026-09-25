@@ -9,7 +9,7 @@ from __future__ import annotations
 from tkinter import messagebox
 
 from ..config import APP_NAME, HOTKEY_CAPTURE_CLEAR_KEYS, HOTKEY_MODIFIERS
-from ..dependencies import get_input_devices
+from ..audio_devices import get_input_devices
 from ..diagnostics import log_exception, log_info, log_warning
 from ..hotkey_config import (
     canonical_hotkey,

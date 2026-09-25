@@ -13,16 +13,21 @@ EXPECTED_MODULES = {
     "runtime.py",
     "config.py",
     "dependencies.py",
+    "audio_devices.py",
+    "cuda_runtime.py",
     "diagnostics.py",
     "hotkey_config.py",
     "settings.py",
     "voice_commands.py",
     "windows.py",
+    "windows_insertion.py",
+    "windows_startup.py",
     "entrypoint.py",
     "core/realtime.py",
     "core/recording_state.py",
     "core/hotkey_state.py",
     "services/audio.py",
+    "services/contracts.py",
     "services/transcription.py",
     "services/text_cleaner.py",
     "ui/notifications.py",
@@ -135,6 +140,27 @@ class RepositoryContractTests(unittest.TestCase):
             unexpected,
             f"runtime.py must contain only package re-exports, not implementation: {unexpected}",
         )
+
+    def test_windows_facade_is_reexport_only(self) -> None:
+        path = PACKAGE / "windows.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        implementations = [
+            node
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        ]
+        self.assertFalse(implementations, "windows.py must stay a compatibility re-export facade")
+
+    def test_audio_device_discovery_is_not_owned_by_dependencies(self) -> None:
+        source = (PACKAGE / "dependencies.py").read_text(encoding="utf-8")
+        self.assertNotIn("def get_input_devices", source)
+        self.assertTrue((PACKAGE / "audio_devices.py").is_file())
+
+    def test_transcriber_does_not_probe_cuda_environment_directly(self) -> None:
+        source = (PACKAGE / "services" / "transcription.py").read_text(encoding="utf-8")
+        self.assertNotIn("find_windows_dll", source)
+        self.assertNotIn("subprocess.run", source)
+        self.assertIn("CudaRuntimeProbe", source)
 
     def test_source_mode_runtime_data_stays_at_repository_root(self) -> None:
         source = (PACKAGE / "config.py").read_text(encoding="utf-8")

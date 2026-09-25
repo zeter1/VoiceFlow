@@ -9,31 +9,31 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import re
-import subprocess
-import sys
-import tempfile
 import threading
 import time
 import traceback
-import wave
+from typing import Any, Callable, Optional
 
 from ..config import (
-    COMPUTE_TYPE_OPTIONS,
-    CUDA_REQUIRED_WINDOWS_DLLS,
-    INFERENCE_DEVICE_OPTIONS,
-    IS_WINDOWS,
     LOCAL_WHISPER_MODEL,
     WHISPER_MODEL_OPTIONS,
 )
+from ..cuda_runtime import BackendRuntime, CudaRuntimeProbe
 from ..dependencies import WhisperModel
-from ..diagnostics import find_windows_dll, log_exception, log_info, log_warning
+from ..diagnostics import log_exception, log_info, log_warning
 
 
 class LocalTranscriber:
-    def __init__(self):
-        self._models: dict[tuple[str, str, str], WhisperModel] = {}
+    def __init__(
+        self,
+        *,
+        backend_runtime: Optional[BackendRuntime] = None,
+        model_factory: Optional[Callable[..., Any]] = None,
+    ):
+        self._backend_runtime = backend_runtime or CudaRuntimeProbe()
+        self._model_factory = model_factory if model_factory is not None else WhisperModel
+        self._models: dict[tuple[str, str, str], Any] = {}
         self._failed_backends: set[tuple[str, str, str]] = set()
-        self._verified_cuda_compute_types: set[str] = set()
         self._lock = threading.Lock()
         self._transcribe_lock = threading.Lock()
         self.active_backend_label = "not loaded"
@@ -42,120 +42,39 @@ class LocalTranscriber:
         return model_name if model_name in WHISPER_MODEL_OPTIONS else LOCAL_WHISPER_MODEL
 
     def _device_compute_candidates(self, device_option: str, compute_type_option: str) -> list[tuple[str, str]]:
-        device_option = device_option if device_option in INFERENCE_DEVICE_OPTIONS else "auto"
-        compute_type_option = compute_type_option if compute_type_option in COMPUTE_TYPE_OPTIONS else "auto"
-        cpu_compute = compute_type_option if compute_type_option in {"int8", "float32"} else "int8"
-
-        if device_option == "cpu":
-            # Some GPU compute types are invalid on CPU. Force a safe CPU backend.
-            return [("cpu", cpu_compute)]
-
-        missing_cuda_dlls = self._windows_missing_cuda_dlls()
-        if missing_cuda_dlls:
+        plan = self._backend_runtime.plan_candidates(device_option, compute_type_option)
+        if plan.missing_runtime_dlls:
             log_warning(
                 "CUDA dependencies are not available; using CPU backend",
                 requested_device=device_option,
                 requested_compute=compute_type_option,
-                required=list(CUDA_REQUIRED_WINDOWS_DLLS),
-                missing=missing_cuda_dlls,
+                missing=list(plan.missing_runtime_dlls),
                 hint="Install CUDA 12.x and add CUDA/cuDNN bin folders to PATH",
             )
-            return [("cpu", cpu_compute)]
-
-        if device_option == "cuda":
-            # Even when the user explicitly selects CUDA, keep CPU as a safe fallback.
-            # Without this, missing cuDNN/cuBLAS or an incompatible compute type can close/crash the app.
-            if compute_type_option == "auto":
-                return [("cuda", "int8_float16"), ("cuda", "float16"), ("cuda", "int8"), ("cpu", "int8")]
-            return [("cuda", compute_type_option), ("cpu", "int8")]
-
-        # auto: try GPU first, then gracefully fall back to CPU if CUDA/cuDNN is absent.
-        if compute_type_option == "auto":
-            return [("cuda", "int8_float16"), ("cuda", "float16"), ("cuda", "int8"), ("cpu", "int8")]
-        return [("cuda", compute_type_option), ("cpu", "int8")]
-
-    def _windows_dll_available(self, dll_name: str) -> bool:
-        return not IS_WINDOWS or find_windows_dll(dll_name) is not None
-
-    def _windows_missing_cuda_dlls(self) -> list[str]:
-        if not IS_WINDOWS:
-            return []
-        return [dll_name for dll_name in CUDA_REQUIRED_WINDOWS_DLLS if find_windows_dll(dll_name) is None]
+        return list(plan.candidates)
 
     def _cuda_preflight_ok(self, model_name: str, cand_compute: str) -> tuple[bool, str]:
-        """Test CUDA model loading in a child process before using it in the UI process.
-
-        Some broken CUDA/cuDNN/cuBLAS installations do not raise a normal Python
-        exception; the native library can terminate python.exe. Running the first
-        CUDA probe in a subprocess prevents the whole VoiceFlow window from closing.
-        """
-        if cand_compute in self._verified_cuda_compute_types:
+        result = self._backend_runtime.preflight(model_name, cand_compute)
+        if result.cached:
             log_info(
                 "CUDA runtime already verified; skipping repeated preflight",
                 model=model_name,
                 compute_type=cand_compute,
             )
-            return True, ""
-
-        missing_cuda_dlls = self._windows_missing_cuda_dlls()
-        if missing_cuda_dlls:
-            details = (
-                "Missing CUDA 12 runtime DLLs in PATH: "
-                + ", ".join(missing_cuda_dlls)
-                + "; skipping slow CUDA preflight"
-            )
-            log_warning(
-                "CUDA dependency missing; skipping CUDA preflight",
-                model=model_name,
-                compute_type=cand_compute,
-                required=list(CUDA_REQUIRED_WINDOWS_DLLS),
-                missing=missing_cuda_dlls,
-                details=details,
-            )
-            return False, details
-
-        log_info("CUDA preflight started", model=model_name, compute_type=cand_compute)
-        code = (
-            "import os, tempfile, wave\n"
-            "from faster_whisper import WhisperModel\n"
-            f"m = WhisperModel({model_name!r}, device='cuda', compute_type={cand_compute!r})\n"
-            "p = os.path.join(tempfile.gettempdir(), 'voiceflow_cuda_preflight.wav')\n"
-            "with wave.open(p, 'wb') as wf:\n"
-            "    wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(16000); wf.writeframes(b'\\x00\\x00' * 16000)\n"
-            "segments, info = m.transcribe(p, language='ru', beam_size=1, best_of=1, vad_filter=False, without_timestamps=True)\n"
-            "list(segments)\n"
-            "print('VOICEFLOW_CUDA_OK')\n"
-        )
-        try:
-            result = subprocess.run(
-                [sys.executable, "-c", code],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=180,
-            )
-            if result.returncode == 0 and "VOICEFLOW_CUDA_OK" in result.stdout:
-                self._verified_cuda_compute_types.add(cand_compute)
-                log_info("CUDA preflight succeeded", model=model_name, compute_type=cand_compute)
-                return True, ""
-            details = (result.stderr or result.stdout or "unknown CUDA load error").strip()
+        elif result.ok:
+            log_info("CUDA preflight succeeded", model=model_name, compute_type=cand_compute)
+        else:
             log_warning(
                 "CUDA preflight failed",
                 model=model_name,
                 compute_type=cand_compute,
                 returncode=result.returncode,
-                details=details[-1200:],
+                details=result.details[-1200:],
             )
-            return False, details[-1200:]
-        except subprocess.TimeoutExpired:
-            log_warning("CUDA preflight timed out", model=model_name, compute_type=cand_compute)
-            return False, "CUDA preflight timeout: модель слишком долго загружалась в тестовом процессе"
-        except Exception as exc:
-            log_exception("CUDA preflight crashed", exc, model=model_name, compute_type=cand_compute)
-            return False, str(exc)
+        return result.ok, result.details
 
-    def _load_model(self, model_name: str, device: str = "auto", compute_type: str = "auto") -> WhisperModel:
-        if WhisperModel is None:
+    def _load_model(self, model_name: str, device: str = "auto", compute_type: str = "auto") -> Any:
+        if self._model_factory is None:
             raise RuntimeError("Не установлен faster-whisper. Выполни: pip install faster-whisper")
         model_name = self._normalize_model_name(model_name)
         errors: list[str] = []
@@ -188,10 +107,10 @@ class LocalTranscriber:
                             # Ryzen 5 5600X has 6 cores / 12 threads; leave 1-2 threads for UI/system.
                             kwargs["cpu_threads"] = max(4, min(10, (os.cpu_count() or 8) - 1))
                         log_info("Loading Whisper model", model=model_name, device=cand_device, compute_type=cand_compute)
-                        self._models[key] = WhisperModel(model_name, **kwargs)
+                        self._models[key] = self._model_factory(model_name, **kwargs)
                     self.active_backend_label = f"{cand_device}/{cand_compute}"
                     if cand_device == "cuda":
-                        self._verified_cuda_compute_types.add(cand_compute)
+                        self._backend_runtime.mark_verified(cand_compute)
                     log_info("Whisper backend selected", model=model_name, device=cand_device, compute_type=cand_compute)
                     return self._models[key]
             except BaseException as exc:

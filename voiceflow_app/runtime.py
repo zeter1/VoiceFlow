@@ -67,11 +67,11 @@ from .config import (
     WINDOWS_HOTKEY_VK,
     get_app_dir,
 )
+from .audio_devices import get_input_devices
 from .dependencies import (
     Image,
     ImageDraw,
     WhisperModel,
-    get_input_devices,
     keyboard,
     np,
     pyautogui,
@@ -116,14 +116,16 @@ from .voice_commands import (
     split_unpunctuated_trailing_send_command,
     voice_control_command_from_text,
 )
-from .windows import (
+from .windows_insertion import (
     PasteTarget,
-    get_current_script_path,
     get_paste_target,
-    get_startup_command,
     is_paste_target_active,
-    is_windows_startup_enabled,
     restore_paste_target,
     send_ctrl_v_native,
+)
+from .windows_startup import (
+    get_current_script_path,
+    get_startup_command,
+    is_windows_startup_enabled,
     set_windows_startup_enabled,
 )

@@ -64,3 +64,13 @@
 - runtime.py сокращён до внешнего re-export-only compatibility facade без собственной implementation logic и внутренних consumers.
 - Repository contracts механически запрещают возврат internal runtime dependencies и implementation внутрь facade.
 - Windows package пересобирается для проверки нового import graph.
+
+## 2026-09-25 — Architecture 2.3: Service Contracts & Dependency Inversion
+
+- Audio-device enumeration вынесена из dependencies.py в отдельный audio_devices.py с injectable backend и offline fake-device tests.
+- CUDA/DLL/subprocess probing вынесен из LocalTranscriber в cuda_runtime.py; transcriber получает backend_runtime и model_factory через явные injection seams.
+- Windows registry startup и foreground/paste implementation разделены на windows_startup.py и windows_insertion.py; windows.py сохранён как совместимый re-export facade.
+- Добавлены services/contracts.py с Protocol-контрактами для AudioRecorder, LocalTranscriber и LocalTextCleaner.
+- Добавлены offline regression tests для microphone catalog, CUDA backend policy/preflight cache и соответствия concrete services объявленным contracts.
+- Repository guards запрещают возвращать device discovery в dependencies.py и CUDA environment probing внутрь transcription service.
+- Пользовательское runtime-поведение намеренно не менялось; Windows binary пересобирается для проверки нового dependency graph.
