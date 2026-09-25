@@ -136,3 +136,9 @@
 
 - Removed a duplicated stream_warning branch header left by mechanical dead-branch extraction; the first 2.8 CI run stopped at compile with IndentationError before tests or packaging.
 - No runtime behavior change beyond restoring valid worker-dispatch syntax.
+
+### Architecture 2.8 corrective dependency-boundary fix
+
+- desktop_delivery.py no longer imports the shared dependencies.py facade, because that facade eagerly requires NumPy/sounddevice.
+- pyperclip and pyautogui are imported as local optional desktop dependencies, so delivery adapter tests remain runnable before packaging dependencies are installed.
+- Added a repository guard preventing desktop delivery from regaining the audio-runtime dependency.

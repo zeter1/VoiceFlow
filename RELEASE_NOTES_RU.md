@@ -14,6 +14,12 @@
 - Исправлен дублированный `elif stream_warning`, который остановил первый Architecture 2.8 CI run на compile до запуска тестов.
 - Runtime behavior не менялся; повторная сборка проходит полный validation ladder.
 
+### Corrective dependency-boundary fix
+
+- Убран import общего `dependencies.py` из desktop delivery: он тянул NumPy/sounddevice и ломал offline delivery tests до установки packaging dependencies.
+- `pyperclip` и `pyautogui` теперь загружаются локально как optional desktop dependencies.
+- Добавлен architecture guard против возврата этой связности.
+
 ## Проверка сборки
 
 GitHub Actions выполняет compile, полный offline regression/architecture suite, PyInstaller build, packaged `VoiceFlow.exe --self-test`, ZIP/SHA-256 и публикацию prerelease.

@@ -11,8 +11,17 @@ import time
 from typing import Callable
 
 from .app.ports import DeliveryResult, TextInsertionPort
-from .dependencies import pyautogui, pyperclip
 from .windows_insertion import PasteTarget, get_paste_target, send_ctrl_v_native
+
+try:
+    import pyperclip
+except Exception:
+    pyperclip = None
+
+try:
+    import pyautogui
+except Exception:
+    pyautogui = None
 
 
 class CurrentTargetTextInsertionAdapter:

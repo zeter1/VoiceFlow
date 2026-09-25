@@ -238,6 +238,8 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertNotIn("paste_text_to_current_target", streaming)
         self.assertNotIn("get_paste_target", actions)
         self.assertNotIn("send_ctrl_v_native", actions)
+        desktop = (PACKAGE / "desktop_delivery.py").read_text(encoding="utf-8")
+        self.assertNotIn("from .dependencies", desktop)
         self.assertNotIn("def _process_audio_worker", streaming)
         self.assertNotIn('msg_type == "result"', dispatch)
         self.assertNotIn('msg_type == "error"', dispatch)
