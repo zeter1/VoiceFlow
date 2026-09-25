@@ -1,36 +1,11 @@
-"""Backward-compatible runtime facade.
+"""External compatibility facade for historical VoiceFlow imports.
 
-Architecture 2.1 moved implementation into focused modules. New internal code
-should import the owning module directly. This facade remains temporarily for
-legacy service/UI modules and external imports while migration continues.
+Internal VoiceFlow modules must import focused owners directly. This module
+contains no implementation and exists only to keep older external imports
+working while the architecture evolves.
 """
 
 from __future__ import annotations
-
-# Preserve legacy stdlib names used by the remaining transitional wildcard
-# consumers without putting implementation back into this facade.
-import ctypes
-from ctypes import wintypes
-import json
-import logging
-import os
-import platform
-import queue
-import re
-import shutil
-import subprocess
-import sys
-import tempfile
-import threading
-import time
-import traceback
-import wave
-from dataclasses import asdict, dataclass
-from pathlib import Path
-from typing import Callable, Optional
-
-import tkinter as tk
-from tkinter import messagebox, ttk
 
 from .config import (
     APP_DIR,

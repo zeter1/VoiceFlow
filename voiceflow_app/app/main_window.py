@@ -9,22 +9,21 @@ import tkinter as tk
 from pathlib import Path
 from typing import Optional
 
-from ..runtime import (
+from ..config import (
     APP_NAME,
     COMPUTE_TYPE_OPTIONS,
     INFERENCE_DEVICE_OPTIONS,
     IS_WINDOWS,
     LOCAL_WHISPER_MODEL,
-    PasteTarget,
     QUALITY_OPTIONS,
     SETTINGS_PATH,
     STREAMING_SPEED_OPTIONS,
-    SettingsStore,
     WHISPER_MODEL_OPTIONS,
-    is_windows_startup_enabled,
-    log_info,
-    pretty_hotkey,
 )
+from ..diagnostics import log_info
+from ..hotkey_config import pretty_hotkey
+from ..settings import SettingsStore
+from ..windows import PasteTarget, is_windows_startup_enabled
 from ..services.audio import AudioRecorder
 from ..services.text_cleaner import LocalTextCleaner
 from ..services.transcription import LocalTranscriber

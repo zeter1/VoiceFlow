@@ -84,65 +84,56 @@ class RepositoryContractTests(unittest.TestCase):
     def test_context_bridge_is_removed(self) -> None:
         self.assertFalse((PACKAGE / "context.py").exists())
 
-    def test_app_and_entrypoint_do_not_use_context_or_wildcard_imports(self) -> None:
-        checked = [
-            PACKAGE / "entrypoint.py",
-            *sorted((PACKAGE / "app").glob("*.py")),
-        ]
+    def test_package_uses_explicit_imports_only(self) -> None:
+        checked = [ENTRYPOINT, *sorted(PACKAGE.rglob("*.py"))]
         for path in checked:
             source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(path))
+            wildcard_imports = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.ImportFrom)
+                and any(alias.name == "*" for alias in node.names)
+            ]
             with self.subTest(path=path.relative_to(ROOT)):
-                self.assertNotIn("context import", source)
-                tree = ast.parse(source, filename=str(path))
-                wildcard_imports = [
-                    node
-                    for node in ast.walk(tree)
-                    if isinstance(node, ast.ImportFrom)
-                    and any(alias.name == "*" for alias in node.names)
-                ]
-                self.assertFalse(wildcard_imports, "App orchestration must use explicit imports")
+                self.assertFalse(wildcard_imports, "VoiceFlow package must use explicit imports")
 
-    def test_runtime_is_a_small_compatibility_facade(self) -> None:
+    def test_internal_modules_do_not_depend_on_runtime_facade(self) -> None:
+        offenders = []
+        for path in sorted(PACKAGE.rglob("*.py")):
+            if path.name == "runtime.py":
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    if node.module == "runtime" and node.level in {1, 2}:
+                        offenders.append(str(path.relative_to(ROOT)))
+                    if node.module == "voiceflow_app.runtime":
+                        offenders.append(str(path.relative_to(ROOT)))
+        self.assertFalse(
+            sorted(set(offenders)),
+            f"Internal modules must import focused owners, not runtime.py: {sorted(set(offenders))}",
+        )
+
+    def test_runtime_is_reexport_only_external_compatibility_facade(self) -> None:
         runtime = PACKAGE / "runtime.py"
         source = runtime.read_text(encoding="utf-8")
-        self.assertLessEqual(len(source.splitlines()), 180)
-        self.assertIn("Backward-compatible runtime facade", source)
-
-    def test_explicit_runtime_compat_imports_are_exported(self) -> None:
-        runtime_path = PACKAGE / "runtime.py"
-        runtime_tree = ast.parse(runtime_path.read_text(encoding="utf-8"), filename=str(runtime_path))
-        exported = set()
-        for node in runtime_tree.body:
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    exported.add(alias.asname or alias.name.split(".")[0])
-            elif isinstance(node, ast.ImportFrom):
-                for alias in node.names:
-                    if alias.name != "*":
-                        exported.add(alias.asname or alias.name)
-            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                exported.add(node.name)
-            elif isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name):
-                        exported.add(target.id)
-            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-                exported.add(node.target.id)
-
-        missing = {}
-        for path in sorted((PACKAGE / "app").glob("*.py")):
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            requested = set()
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and node.module == "runtime" and node.level == 2:
-                    requested.update(alias.name for alias in node.names if alias.name != "*")
-            unresolved = sorted(requested - exported)
-            if unresolved:
-                missing[str(path.relative_to(ROOT))] = unresolved
-
+        self.assertLessEqual(len(source.splitlines()), 140)
+        self.assertIn("External compatibility facade", source)
+        tree = ast.parse(source, filename=str(runtime))
+        unexpected = []
+        for node in tree.body:
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                continue
+            if isinstance(node, ast.ImportFrom):
+                if node.module == "__future__":
+                    continue
+                if node.level == 1:
+                    continue
+            unexpected.append(type(node).__name__)
         self.assertFalse(
-            missing,
-            f"Compatibility runtime must export every symbol still imported by app modules: {missing}",
+            unexpected,
+            f"runtime.py must contain only package re-exports, not implementation: {unexpected}",
         )
 
     def test_source_mode_runtime_data_stays_at_repository_root(self) -> None:

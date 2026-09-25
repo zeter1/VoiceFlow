@@ -19,29 +19,27 @@ from ..core.hotkey_state import (
     advance_hotkey_edge,
     decide_hotkey_action,
 )
-from ..runtime import (
+from ..config import (
     APP_NAME,
     HOTKEY_DEBOUNCE_SECONDS,
     HOTKEY_START_GUARD_SECONDS,
     IS_WINDOWS,
-    PasteTarget,
     WINDOWS_HOTKEY_HEARTBEAT_SECONDS,
     WINDOWS_HOTKEY_MIN_EDGE_GAP_SECONDS,
     WINDOWS_HOTKEY_POLL_INTERVAL_SECONDS,
     WINDOWS_HOTKEY_RELEASE_STABLE_SECONDS,
     WINDOWS_HOTKEY_STUCK_DOWN_LOG_SECONDS,
-    get_paste_target,
+)
+from ..dependencies import keyboard
+from ..diagnostics import log_category, log_exception, log_info, log_warning
+from ..hotkey_config import (
     hotkey_to_windows_vk_options,
-    keyboard,
-    log_category,
-    log_exception,
-    log_info,
-    log_warning,
     normalize_hotkey,
     pretty_hotkey,
     repair_unreliable_modifier_only_hotkey,
     summarize_windows_hotkey_state,
 )
+from ..windows import PasteTarget, get_paste_target
 
 
 class HotkeyMixin:

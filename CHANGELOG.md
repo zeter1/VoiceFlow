@@ -54,3 +54,13 @@
 - Packaged self-test локализовал ImportError: runtime facade не реэкспортировал HOTKEY_START_GUARD_SECONDS.
 - Константа возвращена в compatibility surface.
 - Добавлен AST contract, который проверяет, что все явные app imports из runtime действительно существуют в facade до запуска packaging.
+
+## 2026-09-25 — Architecture 2.2: Runtime Facade Retirement
+
+- Удалены все внутренние imports из voiceflow_app/runtime.py.
+- services/audio.py, services/transcription.py, services/text_cleaner.py, ui/notifications.py и ui/tray.py переведены с wildcard runtime imports на явные canonical owners.
+- app/main_window.py, app/recording.py и app/hotkeys.py также переведены с compatibility facade на config/diagnostics/dependencies/hotkey_config/settings/windows.
+- Во всём voiceflow_app теперь запрещены wildcard imports.
+- runtime.py сокращён до внешнего re-export-only compatibility facade без собственной implementation logic и внутренних consumers.
+- Repository contracts механически запрещают возврат internal runtime dependencies и implementation внутрь facade.
+- Windows package пересобирается для проверки нового import graph.

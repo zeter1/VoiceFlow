@@ -1,22 +1,16 @@
 # Изменения Windows-сборки
 
-## Architecture 2.1 — явные зависимости и декомпозиция runtime
+## Architecture 2.2 — Runtime Facade Retirement
 
-- Полностью удалён transitional context.py.
-- Основные app-модули и startup entrypoint больше не получают зависимости через wildcard import.
-- Большой runtime.py разделён по ответственности: config, diagnostics, dependencies, hotkey config, settings, voice commands и Windows adapters.
-- runtime.py теперь небольшой compatibility facade, а не место для бизнес-логики.
-- Добавлены автоматические architecture guards, которые защищают новые границы от обратного слияния в монолит.
-- Сохранены прежние пути пользовательских logs/settings и старый запуск python voiceflow.py.
-
-- Исправлен stale architecture-test oracle: APP_DIR/get_app_dir теперь корректно проверяется в config.py после декомпозиции runtime.
-
-- Packaged self-test усилен: GUI imports выполняются под диагностическим guard, результат сохраняется в JSON, а CI имеет жёсткий timeout вместо бесконечного ожидания windowed error dialog.
-
-- Packaged diagnostic self-test обнаружил и локализовал пропущенный HOTKEY_START_GUARD_SECONDS export; compatibility facade исправлен и защищён новым AST contract test.
+- Все внутренние модули VoiceFlow теперь импортируют зависимости напрямую из canonical owner-модулей.
+- Убраны последние wildcard imports из services и UI infrastructure.
+- app/main_window.py, recording.py и hotkeys.py больше не зависят от compatibility runtime facade.
+- runtime.py оставлен только как внешний совместимый import path и содержит исключительно re-export существующих owners.
+- Добавлены architecture guards, запрещающие wildcard imports и внутреннюю зависимость от runtime.py.
+- Поведение записи, realtime insertion, hotkeys, settings и пользовательские пути logs/settings намеренно не менялось.
 
 ## Проверка сборки
 
-GitHub Actions должен выполнить compile, offline regression/architecture tests, PyInstaller build, packaged VoiceFlow.exe --self-test, ZIP/SHA-256 и публикацию prerelease.
+GitHub Actions выполняет compile, offline regression/architecture tests, PyInstaller build, bounded packaged VoiceFlow.exe --self-test, ZIP/SHA-256 и публикацию prerelease.
 
-Реальный микрофон, CUDA, глобальная горячая клавиша и вставка в сторонние Windows-приложения требуют отдельной интерактивной runtime-проверки.
+Реальный микрофон, CUDA, глобальная горячая клавиша, tray и вставка в сторонние Windows-приложения требуют отдельной интерактивной runtime-проверки.

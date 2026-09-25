@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from ..runtime import *  # noqa: F401,F403 - shared Windows/UI runtime namespace
+import queue
+import threading
+from typing import Optional
+
+from ..config import APP_NAME
+from ..dependencies import Image, ImageDraw, pystray
+from ..diagnostics import log_category, log_exception, log_info, log_warning
+from ..windows import get_paste_target
 
 
 class TrayManager:

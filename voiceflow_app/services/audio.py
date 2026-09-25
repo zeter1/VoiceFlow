@@ -1,12 +1,22 @@
 """Microphone capture service.
 
 Extracted from the historical monolithic voiceflow.py without intentional
-runtime behavior changes. Shared runtime dependencies live in voiceflow_app.runtime.
+runtime behavior changes. Dependencies are imported from their focused owners.
 """
 
 from __future__ import annotations
 
-from ..runtime import *  # noqa: F401,F403 - transitional compatibility namespace
+import sys
+import tempfile
+import threading
+import time
+import wave
+from pathlib import Path
+from typing import Optional
+
+from ..config import DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE
+from ..dependencies import np, sd
+from ..diagnostics import log_info, log_warning
 
 
 class AudioRecorder:

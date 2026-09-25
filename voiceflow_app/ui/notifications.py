@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from ..runtime import *  # noqa: F401,F403 - shared Windows/UI runtime namespace
+import ctypes
+import tkinter as tk
+from typing import Callable, Optional
+
+from ..config import IS_WINDOWS
+from ..diagnostics import log_category, log_exception, log_info
 
 
 class NotificationManager:

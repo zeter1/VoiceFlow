@@ -1,12 +1,13 @@
 """Offline dictated-text cleanup service.
 
 Extracted from the historical monolithic voiceflow.py without intentional
-runtime behavior changes. Shared runtime dependencies live in voiceflow_app.runtime.
+runtime behavior changes. This module depends only on text-processing stdlib APIs.
 """
 
 from __future__ import annotations
 
-from ..runtime import *  # noqa: F401,F403 - transitional compatibility namespace
+import re
+from typing import Optional
 
 
 class LocalTextCleaner:

@@ -1,12 +1,32 @@
 """Local faster-whisper transcription service.
 
 Extracted from the historical monolithic voiceflow.py without intentional
-runtime behavior changes. Shared runtime dependencies live in voiceflow_app.runtime.
+runtime behavior changes. Dependencies are imported from their focused owners.
 """
 
 from __future__ import annotations
 
-from ..runtime import *  # noqa: F401,F403 - transitional compatibility namespace
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import traceback
+import wave
+
+from ..config import (
+    COMPUTE_TYPE_OPTIONS,
+    CUDA_REQUIRED_WINDOWS_DLLS,
+    INFERENCE_DEVICE_OPTIONS,
+    IS_WINDOWS,
+    LOCAL_WHISPER_MODEL,
+    WHISPER_MODEL_OPTIONS,
+)
+from ..dependencies import WhisperModel
+from ..diagnostics import find_windows_dll, log_exception, log_info, log_warning
 
 
 class LocalTranscriber:

@@ -17,23 +17,20 @@ from ..core.recording_state import (
     derive_recording_phase,
     needs_idle_repair,
 )
-from ..runtime import (
+from ..config import (
     COMPUTE_TYPE_OPTIONS,
     HOTKEY_DEBOUNCE_SECONDS,
     HOTKEY_START_GUARD_SECONDS,
     INFERENCE_DEVICE_OPTIONS,
     LOCAL_WHISPER_MODEL,
-    PasteTarget,
     QUALITY_OPTIONS,
-    RuntimeSettings,
     STREAMING_SPEED_OPTIONS,
     STREAM_FINAL_CHUNK_ON_STOP,
     WHISPER_MODEL_OPTIONS,
-    get_paste_target,
-    log_exception,
-    log_info,
-    log_warning,
 )
+from ..diagnostics import log_exception, log_info, log_warning
+from ..settings import RuntimeSettings
+from ..windows import PasteTarget, get_paste_target
 
 
 class RecordingMixin:
