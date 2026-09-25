@@ -142,3 +142,9 @@
 - desktop_delivery.py no longer imports the shared dependencies.py facade, because that facade eagerly requires NumPy/sounddevice.
 - pyperclip and pyautogui are imported as local optional desktop dependencies, so delivery adapter tests remain runnable before packaging dependencies are installed.
 - Added a repository guard preventing desktop delivery from regaining the audio-runtime dependency.
+
+### Architecture 2.8 corrective lazy Windows-adapter fix
+
+- desktop_delivery.py no longer imports windows_insertion.py at module import time; default target capture and native Ctrl+V sender are resolved lazily only when actual delivery occurs.
+- This prevents offline delivery tests and composition imports from transitively initializing the legacy audio dependency facade through windows_insertion.
+- Desktop delivery tests now use structural fake targets and remain completely independent from Windows/audio modules.

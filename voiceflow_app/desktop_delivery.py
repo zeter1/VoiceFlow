@@ -11,7 +11,6 @@ import time
 from typing import Callable
 
 from .app.ports import DeliveryResult, TextInsertionPort
-from .windows_insertion import PasteTarget, get_paste_target, send_ctrl_v_native
 
 try:
     import pyperclip
@@ -24,13 +23,34 @@ except Exception:
     pyautogui = None
 
 
+def _default_target_getter() -> object:
+    from .windows_insertion import get_paste_target
+
+    return get_paste_target()
+
+
+def _default_paste_sender() -> bool:
+    from .windows_insertion import send_ctrl_v_native
+
+    return send_ctrl_v_native()
+
+
+def _target_handle(target: object, name: str) -> int | None:
+    value = getattr(target, name, None)
+    try:
+        result = int(value or 0)
+        return result or None
+    except Exception:
+        return None
+
+
 class CurrentTargetTextInsertionAdapter:
     def __init__(
         self,
         *,
         clipboard: object = pyperclip,
-        target_getter: Callable[[], PasteTarget] = get_paste_target,
-        paste_sender: Callable[[], bool] = send_ctrl_v_native,
+        target_getter: Callable[[], object] = _default_target_getter,
+        paste_sender: Callable[[], bool] = _default_paste_sender,
         sleep: Callable[[float], None] = time.sleep,
     ):
         self.clipboard = clipboard
@@ -59,16 +79,16 @@ class CurrentTargetTextInsertionAdapter:
             return DeliveryResult(
                 ok=True,
                 code="pasted",
-                foreground_hwnd=target.foreground_hwnd,
-                focus_hwnd=target.focus_hwnd,
+                foreground_hwnd=_target_handle(target, "foreground_hwnd"),
+                focus_hwnd=_target_handle(target, "focus_hwnd"),
             )
         except Exception as exc:
             return DeliveryResult(
                 ok=False,
                 code="paste_failed",
                 error=str(exc) or type(exc).__name__,
-                foreground_hwnd=target.foreground_hwnd,
-                focus_hwnd=target.focus_hwnd,
+                foreground_hwnd=_target_handle(target, "foreground_hwnd"),
+                focus_hwnd=_target_handle(target, "focus_hwnd"),
             )
 
 
@@ -78,7 +98,7 @@ class CurrentTargetVoiceActionAdapter:
         text_inserter: TextInsertionPort,
         *,
         automation: object = pyautogui,
-        target_getter: Callable[[], PasteTarget] = get_paste_target,
+        target_getter: Callable[[], object] = _default_target_getter,
         sleep: Callable[[float], None] = time.sleep,
     ):
         self.text_inserter = text_inserter
@@ -99,8 +119,8 @@ class CurrentTargetVoiceActionAdapter:
                 ok=False,
                 code="pyautogui_missing",
                 error="pyautogui is not installed",
-                foreground_hwnd=target.foreground_hwnd,
-                focus_hwnd=target.focus_hwnd,
+                foreground_hwnd=_target_handle(target, "foreground_hwnd"),
+                focus_hwnd=_target_handle(target, "focus_hwnd"),
             )
 
         def run_action(action_kind: str, action_value: object) -> None:
@@ -127,14 +147,14 @@ class CurrentTargetVoiceActionAdapter:
             return DeliveryResult(
                 ok=True,
                 code="voice_action_sent",
-                foreground_hwnd=target.foreground_hwnd,
-                focus_hwnd=target.focus_hwnd,
+                foreground_hwnd=_target_handle(target, "foreground_hwnd"),
+                focus_hwnd=_target_handle(target, "focus_hwnd"),
             )
         except Exception as exc:
             return DeliveryResult(
                 ok=False,
                 code="voice_action_failed",
                 error=str(exc) or type(exc).__name__,
-                foreground_hwnd=target.foreground_hwnd,
-                focus_hwnd=target.focus_hwnd,
+                foreground_hwnd=_target_handle(target, "foreground_hwnd"),
+                focus_hwnd=_target_handle(target, "focus_hwnd"),
             )

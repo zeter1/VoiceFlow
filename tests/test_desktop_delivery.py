@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 import unittest
 
 from voiceflow_app.app.ports import DeliveryResult
@@ -7,8 +8,6 @@ from voiceflow_app.desktop_delivery import (
     CurrentTargetTextInsertionAdapter,
     CurrentTargetVoiceActionAdapter,
 )
-from voiceflow_app.windows_insertion import PasteTarget
-
 
 class FakeClipboard:
     def __init__(self):
@@ -44,7 +43,7 @@ class DesktopDeliveryAdapterTests(unittest.TestCase):
         sleeps = []
         adapter = CurrentTargetTextInsertionAdapter(
             clipboard=clipboard,
-            target_getter=lambda: PasteTarget(10, 20),
+            target_getter=lambda: SimpleNamespace(foreground_hwnd=10, focus_hwnd=20),
             paste_sender=lambda: True,
             sleep=sleeps.append,
         )
@@ -61,7 +60,7 @@ class DesktopDeliveryAdapterTests(unittest.TestCase):
         clipboard = FakeClipboard()
         adapter = CurrentTargetTextInsertionAdapter(
             clipboard=clipboard,
-            target_getter=lambda: PasteTarget(1, 2),
+            target_getter=lambda: SimpleNamespace(foreground_hwnd=1, focus_hwnd=2),
             paste_sender=lambda: False,
             sleep=lambda _seconds: None,
         )
@@ -77,7 +76,7 @@ class DesktopDeliveryAdapterTests(unittest.TestCase):
         adapter = CurrentTargetVoiceActionAdapter(
             inserter,
             automation=FakeAutomation(),
-            target_getter=lambda: PasteTarget(1, 2),
+            target_getter=lambda: SimpleNamespace(foreground_hwnd=1, focus_hwnd=2),
             sleep=lambda _seconds: None,
         )
 
@@ -91,7 +90,7 @@ class DesktopDeliveryAdapterTests(unittest.TestCase):
         adapter = CurrentTargetVoiceActionAdapter(
             FakeTextInserter(),
             automation=automation,
-            target_getter=lambda: PasteTarget(7, 8),
+            target_getter=lambda: SimpleNamespace(foreground_hwnd=7, focus_hwnd=8),
             sleep=lambda _seconds: None,
         )
 
@@ -127,7 +126,7 @@ class DesktopDeliveryAdapterTests(unittest.TestCase):
         adapter = CurrentTargetVoiceActionAdapter(
             FakeTextInserter(),
             automation=None,
-            target_getter=lambda: PasteTarget(7, 8),
+            target_getter=lambda: SimpleNamespace(foreground_hwnd=7, focus_hwnd=8),
             sleep=lambda _seconds: None,
         )
 

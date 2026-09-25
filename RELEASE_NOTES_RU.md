@@ -20,6 +20,12 @@
 - `pyperclip` и `pyautogui` теперь загружаются локально как optional desktop dependencies.
 - Добавлен architecture guard против возврата этой связности.
 
+### Corrective lazy Windows-adapter fix
+
+- Windows target/native paste adapter теперь подключается лениво только в момент реальной вставки.
+- Offline delivery tests больше не импортируют Windows/audio runtime graph и используют structural fake target.
+- Добавлен guard против eager `windows_insertion` import в delivery adapter.
+
 ## Проверка сборки
 
 GitHub Actions выполняет compile, полный offline regression/architecture suite, PyInstaller build, packaged `VoiceFlow.exe --self-test`, ZIP/SHA-256 и публикацию prerelease.
