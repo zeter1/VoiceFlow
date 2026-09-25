@@ -48,3 +48,9 @@
 - GUI/app import graph перенесён за --self-test gate; packaged self-test ловит import regressions и пишет structured JSON evidence.
 - GitHub Actions smoke-test получил bounded 90-second timeout, принудительное завершение зависшего EXE и вывод self-test payload.
 - Это устраняет возможность бесконечно ждать windowed PyInstaller error dialog при import-time regression.
+
+### Compatibility facade regression guard
+
+- Packaged self-test локализовал ImportError: runtime facade не реэкспортировал HOTKEY_START_GUARD_SECONDS.
+- Константа возвращена в compatibility surface.
+- Добавлен AST contract, который проверяет, что все явные app imports из runtime действительно существуют в facade до запуска packaging.

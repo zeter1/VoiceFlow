@@ -108,6 +108,43 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertLessEqual(len(source.splitlines()), 180)
         self.assertIn("Backward-compatible runtime facade", source)
 
+    def test_explicit_runtime_compat_imports_are_exported(self) -> None:
+        runtime_path = PACKAGE / "runtime.py"
+        runtime_tree = ast.parse(runtime_path.read_text(encoding="utf-8"), filename=str(runtime_path))
+        exported = set()
+        for node in runtime_tree.body:
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    exported.add(alias.asname or alias.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    if alias.name != "*":
+                        exported.add(alias.asname or alias.name)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                exported.add(node.name)
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        exported.add(target.id)
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                exported.add(node.target.id)
+
+        missing = {}
+        for path in sorted((PACKAGE / "app").glob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            requested = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module == "runtime" and node.level == 2:
+                    requested.update(alias.name for alias in node.names if alias.name != "*")
+            unresolved = sorted(requested - exported)
+            if unresolved:
+                missing[str(path.relative_to(ROOT))] = unresolved
+
+        self.assertFalse(
+            missing,
+            f"Compatibility runtime must export every symbol still imported by app modules: {missing}",
+        )
+
     def test_source_mode_runtime_data_stays_at_repository_root(self) -> None:
         source = (PACKAGE / "config.py").read_text(encoding="utf-8")
         self.assertIn('if package_dir.name == "voiceflow_app":', source)

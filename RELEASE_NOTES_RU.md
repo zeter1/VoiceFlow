@@ -13,6 +13,8 @@
 
 - Packaged self-test усилен: GUI imports выполняются под диагностическим guard, результат сохраняется в JSON, а CI имеет жёсткий timeout вместо бесконечного ожидания windowed error dialog.
 
+- Packaged diagnostic self-test обнаружил и локализовал пропущенный HOTKEY_START_GUARD_SECONDS export; compatibility facade исправлен и защищён новым AST contract test.
+
 ## Проверка сборки
 
 GitHub Actions должен выполнить compile, offline regression/architecture tests, PyInstaller build, packaged VoiceFlow.exe --self-test, ZIP/SHA-256 и публикацию prerelease.
