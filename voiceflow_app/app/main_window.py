@@ -103,7 +103,7 @@ class VoiceFlowOfflineApp(
         self.notifications.on_position_changed = self._on_notification_position_changed
         self.tray = self.services.tray_factory(self)
         self.tray_started = False
-        self.worker_queue: queue.Queue[tuple[str, object]] = queue.Queue()
+        self.worker_queue: queue.Queue[object] = queue.Queue()
         self.last_wav_path: Optional[Path] = None
         self.record_started_at: Optional[float] = None
         self.timer_job: Optional[str] = None

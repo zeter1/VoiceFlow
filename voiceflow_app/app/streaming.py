@@ -1,7 +1,6 @@
-"""Realtime speech streaming, deduplication and worker queue.
+"""Realtime speech orchestration, text shaping and insertion helpers.
 
-Methods keep their original implementation while the physical module boundary
-makes navigation, review and future extraction safer.
+The headless frame/transcription worker lives in app/realtime_worker.py.
 """
 
 from __future__ import annotations
@@ -27,25 +26,15 @@ from ..diagnostics import (
     log_warning,
 )
 from ..settings import RuntimeSettings
-from ..services.audio_analysis import stream_audio_stats
-from ..worker_messages import (
-    StreamResultPayload,
-    StreamWarningPayload,
-    WorkerMessageKind,
-    put_worker_message,
-)
-from .session_controller import SessionTranscriptionRequest
+from ..worker_messages import WorkerMessageKind, put_worker_message
+from .realtime_worker import RealtimeWorkerConfig, RealtimeWorkerEngine
 from ..voice_commands import (
     normalize_voice_command_text,
     split_trailing_voice_control_command,
     voice_control_command_from_text,
 )
 from ..windows import PasteTarget, get_paste_target
-from ..core.realtime_policy import (
-    build_realtime_timing,
-    decide_chunk_commit,
-    should_process_final_chunk,
-)
+from ..core.realtime_policy import build_realtime_timing
 from ..core.realtime import (
     dedupe_stream_chunk as core_dedupe_stream_chunk,
     get_missing_final_tail as core_get_missing_final_tail,
@@ -164,9 +153,6 @@ class StreamingMixin:
 
         threading.Thread(target=waiter, name="voiceflow-stream-finalizer", daemon=True).start()
 
-    def _stream_audio_stats(self, frames: list[object], sample_rate: int) -> dict[str, float]:
-        return stream_audio_stats(frames, sample_rate)
-
     def _stream_quality(self, runtime_settings: RuntimeSettings) -> str:
         profile = runtime_settings.realtime_speed_profile
         if runtime_settings.realtime_fast_quality or profile == "Быстрее":
@@ -259,326 +245,40 @@ class StreamingMixin:
         session_id: int,
         runtime_settings: RuntimeSettings,
     ) -> None:
-        """Stable phrase-based realtime recognition.
-
-        This does not paste every tiny audio chunk. Short chunks are the main
-        reason for wrong text, hallucinations and duplicated fragments in local
-        Whisper. We accumulate audio and commit only after a pause or when the
-        chunk becomes long enough.
-        """
         timing = build_realtime_timing(
             runtime_settings.realtime_speed_profile,
             runtime_settings.realtime_chunk_seconds,
             use_vad_filter=runtime_settings.use_vad_filter,
             cpu_path_expected=self._cpu_realtime_path_expected(runtime_settings),
         )
-        profile = runtime_settings.realtime_speed_profile
-        streaming_model_name = self._streaming_model_name(runtime_settings)
-        poll_interval = timing.poll_interval
-        min_seconds = timing.min_seconds
-        max_seconds = timing.max_seconds
-        trailing_silence_required = timing.trailing_silence_required
-        sentence_end_pause_seconds = timing.sentence_end_pause_seconds
-        streaming_vad_filter = timing.streaming_vad_filter
-        bad_retry_after_frame_index = 0
-        bad_filtered_streak = 0
-        max_bad_hold_seconds = timing.max_bad_hold_seconds
-        committed_raw_context = ""
-        committed_clean_context = ""
-        last_frame_index = self.stream_last_frame_index
-        log_info(
-            "Realtime timing configured",
-            session_id=session_id,
-            profile=profile,
-            model=streaming_model_name,
-            poll_interval=poll_interval,
-            min_seconds=round(min_seconds, 2),
-            max_seconds=round(max_seconds, 2),
-            trailing_silence_required=round(trailing_silence_required, 2),
-            sentence_end_pause_seconds=round(sentence_end_pause_seconds, 2),
-            streaming_vad_filter=streaming_vad_filter,
-            max_bad_hold_seconds=round(max_bad_hold_seconds, 2),
+        engine = RealtimeWorkerEngine(
+            recorder=self.recorder,
+            session_controller=self.session_controller,
+            message_queue=self.worker_queue,
+            config=RealtimeWorkerConfig(
+                session_id=session_id,
+                origin=origin,
+                mode=mode,
+                language=runtime_settings.language,
+                model_name=self._streaming_model_name(runtime_settings),
+                quality=self._stream_quality(runtime_settings),
+                custom_terms=runtime_settings.custom_terms,
+                inference_device=runtime_settings.inference_device,
+                compute_type=runtime_settings.compute_type,
+                speed_profile=runtime_settings.realtime_speed_profile,
+                timing=timing,
+                final_chunk_on_stop=STREAM_FINAL_CHUNK_ON_STOP,
+            ),
+            start_frame_index=self.stream_last_frame_index,
+            context_reset_event=self.stream_context_reset_event,
+            clean_chunk=lambda raw_text, keep_sentence_end: self._clean_stream_chunk_for_commit(
+                raw_text,
+                runtime_settings,
+                keep_sentence_end=keep_sentence_end,
+            ),
+            dedupe_chunk=self._dedupe_stream_chunk,
         )
-
-        def reset_context_if_requested() -> None:
-            nonlocal committed_raw_context, committed_clean_context, last_frame_index
-            if self.stream_context_reset_event.is_set():
-                committed_raw_context = ""
-                committed_clean_context = ""
-                self.stream_context_reset_event.clear()
-                log_info("Realtime dictation context reset", session_id=session_id)
-
-        def commit_frames(frames: list[np.ndarray], new_index: int, sample_rate: int, is_final: bool = False) -> None:
-            nonlocal committed_raw_context, committed_clean_context, last_frame_index, bad_retry_after_frame_index, bad_filtered_streak
-            reset_context_if_requested()
-            if not frames:
-                last_frame_index = new_index
-                return
-
-            stats = self._stream_audio_stats(frames, sample_rate)
-            decision = decide_chunk_commit(stats, timing, is_final=is_final)
-            if not decision.commit:
-                if decision.advance_frame:
-                    last_frame_index = new_index
-                return
-
-            duration = stats["duration"]
-            pause_seconds = decision.pause_seconds
-            sentence_pause = decision.sentence_pause
-            has_pause = decision.has_pause
-            forced_commit = decision.forced_commit
-            if not is_final:
-                log_info(
-                    "Realtime commit triggered",
-                    session_id=session_id,
-                    duration=round(duration, 3),
-                    trailing_silence=round(stats["trailing_silence"], 3),
-                    speech_trailing_silence=round(stats.get("speech_trailing_silence", 0.0), 3),
-                    pause_seconds=round(pause_seconds, 3),
-                    sentence_pause=sentence_pause,
-                    sentence_end_pause_seconds=round(sentence_end_pause_seconds, 3),
-                    forced_commit=forced_commit,
-                    has_pause=has_pause,
-                    frame_index=new_index,
-                    peak=round(stats.get("peak", 0.0), 5),
-                    rms=round(stats.get("rms", 0.0), 5),
-                    peak_to_rms=round(stats.get("peak_to_rms", 0.0), 3),
-                    active_ratio=round(stats.get("active_ratio", 0.0), 3),
-                    streaming_vad_filter=streaming_vad_filter,
-                    decision_reason=decision.reason,
-                )
-
-            # Never freeze realtime input after a bad/noisy chunk.
-            # Older builds tried to retain audio after Whisper returned an empty
-            # or hallucinated result, but mixed sample counts with callback-frame
-            # indexes. That made retry_after_frame_index enormous, so after one
-            # inserted sentence the worker kept delaying the same growing chunk
-            # forever and no more text was pasted. Keep dictation continuous:
-            # bad chunks are logged and skipped below, then the stream advances.
-
-            try:
-                transcript = self.session_controller.transcribe_frames(
-                    frames,
-                    SessionTranscriptionRequest(
-                        language=runtime_settings.language,
-                        model_name=streaming_model_name,
-                        quality=self._stream_quality(runtime_settings),
-                        custom_terms=runtime_settings.custom_terms,
-                        use_vad_filter=streaming_vad_filter,
-                        context_text=committed_raw_context[-500:],
-                        device=runtime_settings.inference_device,
-                        compute_type=runtime_settings.compute_type,
-                        streaming=True,
-                        clean_output=False,
-                    ),
-                    prefix="stream_stable_chunk",
-                    session_id=session_id,
-                )
-                if transcript is None:
-                    last_frame_index = new_index
-                    return
-                wav_path = transcript.wav_path
-                transcribed_raw = transcript.raw_text
-                raw = transcribed_raw
-                raw_text_for_end = (raw or "").strip()
-                raw_had_ellipsis = bool(re.search(r"(?:\.{2,}|…)[\s.!?…]*$", raw_text_for_end))
-                whisper_sentence_end = bool(re.search(r"[.!?][\"'»\)\]]*$", raw_text_for_end)) and not raw_had_ellipsis
-                keep_sentence_end = bool(is_final or sentence_pause or whisper_sentence_end)
-                raw, cleaned = self._clean_stream_chunk_for_commit(
-                    raw,
-                    runtime_settings,
-                    keep_sentence_end=keep_sentence_end,
-                )
-                if not raw and not cleaned:
-                    bad_filtered_streak += 1
-                    # Do not retain bad chunks for retry. Retaining used to
-                    # make last_frame_index stay old; after one empty/noisy
-                    # transcription the next chunk grew to minutes and realtime
-                    # insertion effectively stopped. A filtered chunk means:
-                    # skip it, advance the stream, and keep listening.
-                    retain_audio_for_retry = False
-                    bad_retry_after_frame_index = 0
-                    log_dictation_text(
-                        "stream_filtered",
-                        session_id=session_id,
-                        origin=origin,
-                        mode=mode,
-                        raw_text=transcribed_raw,
-                        reason="bad_or_empty_stream_text",
-                        model=streaming_model_name,
-                        language=runtime_settings.language,
-                        device=runtime_settings.inference_device,
-                        compute_type=runtime_settings.compute_type,
-                        speed_profile=runtime_settings.realtime_speed_profile,
-                        is_final=is_final,
-                        has_pause=has_pause,
-                        forced_commit=forced_commit,
-                        audio_duration=round(duration, 3),
-                        trailing_silence=round(stats["trailing_silence"], 3),
-                        speech_trailing_silence=round(stats.get("speech_trailing_silence", 0.0), 3),
-                        pause_seconds=round(pause_seconds, 3),
-                        sentence_pause=bool(sentence_pause),
-                        sentence_end_pause_seconds=round(sentence_end_pause_seconds, 3),
-                        whisper_sentence_end=bool(whisper_sentence_end),
-                        keep_sentence_end=bool(keep_sentence_end),
-                        peak=round(stats.get("peak", 0.0), 5),
-                        rms=round(stats.get("rms", 0.0), 5),
-                        peak_to_rms=round(stats.get("peak_to_rms", 0.0), 3),
-                        active_ratio=round(stats.get("active_ratio", 0.0), 3),
-                        streaming_vad_filter=streaming_vad_filter,
-                        bad_filtered_streak=bad_filtered_streak,
-                        retain_audio_for_retry=retain_audio_for_retry,
-                        retry_after_frame_index=bad_retry_after_frame_index if retain_audio_for_retry else None,
-                    )
-                    log_info(
-                        "Realtime chunk filtered as hallucination/noise",
-                        session_id=session_id,
-                        raw_text=transcribed_raw,
-                        retain_audio_for_retry=retain_audio_for_retry,
-                        bad_filtered_streak=bad_filtered_streak,
-                        duration=round(duration, 3),
-                        peak=round(stats.get("peak", 0.0), 5),
-                        rms=round(stats.get("rms", 0.0), 5),
-                        active_ratio=round(stats.get("active_ratio", 0.0), 3),
-                    )
-                    if retain_audio_for_retry:
-                        return
-                    last_frame_index = new_index
-                    return
-                raw_delta = self._dedupe_stream_chunk(committed_raw_context, raw)
-                clean_delta = self._dedupe_stream_chunk(committed_clean_context, cleaned)
-                if raw_delta or clean_delta:
-                    if not raw_delta:
-                        raw_delta = clean_delta
-                    if not clean_delta:
-                        clean_delta = raw_delta
-                    raw_context_delta, raw_context_command = split_trailing_voice_control_command(raw_delta)
-                    clean_context_delta, clean_context_command = split_trailing_voice_control_command(clean_delta)
-                    if raw_context_command is None:
-                        raw_context_delta = raw_delta
-                    if clean_context_command is None:
-                        clean_context_delta = clean_delta
-                    if raw_context_delta:
-                        committed_raw_context = (committed_raw_context + " " + raw_context_delta).strip()
-                    if clean_context_delta:
-                        committed_clean_context = (committed_clean_context + " " + clean_context_delta).strip()
-                    commit_meta = {
-                        "pause_seconds": pause_seconds,
-                        "trailing_silence": float(stats.get("trailing_silence", 0.0)),
-                        "speech_trailing_silence": float(stats.get("speech_trailing_silence", 0.0)),
-                        "sentence_pause": bool(sentence_pause),
-                        "sentence_end_pause_seconds": float(sentence_end_pause_seconds),
-                        "has_pause": bool(has_pause),
-                        "forced_commit": bool(forced_commit),
-                        "whisper_sentence_end": bool(whisper_sentence_end),
-                        "keep_sentence_end": bool(keep_sentence_end),
-                        "raw_text": raw_delta,
-                    }
-                    log_dictation_text(
-                        "stream_chunk",
-                        session_id=session_id,
-                        origin=origin,
-                        mode=mode,
-                        raw_text=raw_delta,
-                        cleaned_text=clean_delta,
-                        full_clean_context=committed_clean_context[-1200:],
-                        model=streaming_model_name,
-                        language=runtime_settings.language,
-                        device=runtime_settings.inference_device,
-                        compute_type=runtime_settings.compute_type,
-                        speed_profile=runtime_settings.realtime_speed_profile,
-                        is_final=is_final,
-                        has_pause=has_pause,
-                        forced_commit=forced_commit,
-                        audio_duration=round(duration, 3),
-                        trailing_silence=round(stats["trailing_silence"], 3),
-                        speech_trailing_silence=round(stats.get("speech_trailing_silence", 0.0), 3),
-                        pause_seconds=round(pause_seconds, 3),
-                        sentence_pause=bool(sentence_pause),
-                        sentence_end_pause_seconds=round(sentence_end_pause_seconds, 3),
-                        whisper_sentence_end=bool(whisper_sentence_end),
-                        keep_sentence_end=bool(keep_sentence_end),
-                        peak=round(stats.get("peak", 0.0), 5),
-                        rms=round(stats.get("rms", 0.0), 5),
-                        peak_to_rms=round(stats.get("peak_to_rms", 0.0), 3),
-                        active_ratio=round(stats.get("active_ratio", 0.0), 3),
-                        streaming_vad_filter=streaming_vad_filter,
-                    )
-                    bad_filtered_streak = 0
-                    bad_retry_after_frame_index = 0
-                    put_worker_message(
-                        self.worker_queue,
-                        WorkerMessageKind.STREAM_RESULT,
-                        StreamResultPayload(
-                            session_id=session_id,
-                            raw=raw_delta,
-                            cleaned=clean_delta,
-                            origin=origin,
-                            stream_mode=mode,
-                            is_final=is_final,
-                            commit_meta=commit_meta,
-                        ),
-                    )
-                last_frame_index = new_index
-            finally:
-                try:
-                    wav_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-
-        while not stop_event.wait(poll_interval):
-            if not self.recorder.is_recording:
-                break
-            try:
-                reset_context_if_requested()
-                frames, new_index, sample_rate = self.recorder.get_frames_since(last_frame_index)
-                commit_frames(frames, new_index, sample_rate, is_final=False)
-            except BaseException as exc:
-                log_exception("Realtime streaming chunk failed", exc, session_id=session_id, origin=origin, mode=mode)
-                try:
-                    put_worker_message(
-                        self.worker_queue,
-                        WorkerMessageKind.STREAM_WARNING,
-                        StreamWarningPayload(session_id=session_id, error=exc),
-                    )
-                except Exception:
-                    pass
-                time.sleep(0.8)
-
-        if not should_process_final_chunk(
-            stop_requested=stop_event.is_set(),
-            final_chunk_on_stop=STREAM_FINAL_CHUNK_ON_STOP,
-        ):
-            log_info(
-                "Realtime final chunk skipped to keep hotkey responsive",
-                session_id=session_id,
-                origin=origin,
-                mode=mode,
-            )
-            log_dictation_text(
-                "stream_final_skipped",
-                session_id=session_id,
-                origin=origin,
-                mode=mode,
-                reason="stop_should_not_block_next_hotkey",
-            )
-            log_info("Realtime streaming worker finished", session_id=session_id, origin=origin, mode=mode)
-            return
-
-        try:
-            frames, new_index, sample_rate = self.recorder.get_frames_since(last_frame_index)
-            commit_frames(frames, new_index, sample_rate, is_final=True)
-        except BaseException as exc:
-            log_exception("Realtime final chunk failed", exc, session_id=session_id, origin=origin, mode=mode)
-            try:
-                put_worker_message(
-                        self.worker_queue,
-                        WorkerMessageKind.STREAM_WARNING,
-                        StreamWarningPayload(session_id=session_id, error=exc),
-                    )
-            except Exception:
-                pass
-        log_info("Realtime streaming worker finished", session_id=session_id, origin=origin, mode=mode)
+        engine.run(stop_event)
 
     def _append_stream_text(self, widget: tk.Text, text: str) -> None:
         text = re.sub(r"[ \t\r\f\v]+", " ", (text or "").strip())

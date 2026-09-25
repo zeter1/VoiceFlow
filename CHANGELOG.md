@@ -102,3 +102,12 @@
 - Hotkey polling, tray callbacks and streaming workers now enqueue typed worker messages instead of ad-hoc tuple literals.
 - Added regression tests for timing profiles, pause/max-duration triggers, quiet/bad chunk advancement, final-chunk cancellation, noisy-room pause statistics and stale session filtering.
 - Repository contracts now bound both streaming.py and worker_dispatch.py and prevent direct tuple queue producers from returning in critical producers.
+
+## 2026-09-25 — Architecture 2.6: Headless Realtime Worker Engine
+
+- Frame cursor, realtime transcription context, chunk processing, temporary WAV cleanup and typed result/warning production moved from app/streaming.py into app/realtime_worker.py.
+- RealtimeWorkerEngine is GUI-free and accepts recorder/session/message ports plus injected audio-stat, cleanup, dedupe and sleep seams for deterministic offline tests.
+- app/streaming.py is reduced to application-side setup plus a small engine adapter while retaining text-shaping/insertion helpers.
+- Added headless integration regressions for speech→pause→result, noise→skip→continue, filtered-chunk cursor advancement, cancellation, context reset and transcription-failure recovery.
+- Fixed a latent failure-masking path: transcription exceptions that occur before a WAV path is returned can no longer be replaced by an uninitialized wav_path cleanup error.
+- Worker queue typing in VoiceFlowOfflineApp now reflects typed/legacy-coercible message objects rather than tuple-only payloads.

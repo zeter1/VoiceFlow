@@ -43,6 +43,7 @@ EXPECTED_MODULES = {
     "app/controls.py",
     "app/hotkeys.py",
     "app/recording.py",
+    "app/realtime_worker.py",
     "app/streaming.py",
     "app/worker_dispatch.py",
     "app/actions.py",
@@ -184,15 +185,34 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertNotIn("_windows_missing_cuda_dlls", source)
         self.assertIn("backend_candidates(", source)
 
-    def test_streaming_realtime_policy_and_dispatch_are_extracted(self) -> None:
+    def test_streaming_realtime_worker_and_dispatch_are_extracted(self) -> None:
         streaming = (PACKAGE / "app" / "streaming.py").read_text(encoding="utf-8")
+        engine = (PACKAGE / "app" / "realtime_worker.py").read_text(encoding="utf-8")
         dispatch = (PACKAGE / "app" / "worker_dispatch.py").read_text(encoding="utf-8")
-        self.assertLessEqual(len(streaming.splitlines()), 900)
+        self.assertLessEqual(len(streaming.splitlines()), 560)
+        self.assertLessEqual(len(engine.splitlines()), 470)
         self.assertLessEqual(len(dispatch.splitlines()), 360)
         self.assertNotIn("def _frames_to_float_mono", streaming)
         self.assertNotIn("def _handle_worker_message", streaming)
-        self.assertIn("decide_chunk_commit(", streaming)
+        self.assertNotIn("SessionTranscriptionRequest(", streaming)
+        self.assertNotIn("def process_frames", streaming)
+        self.assertIn("RealtimeWorkerEngine(", streaming)
+        self.assertIn("decide_chunk_commit(", engine)
         self.assertIn("coerce_worker_message(", dispatch)
+
+    def test_realtime_worker_engine_is_headless(self) -> None:
+        path = PACKAGE / "app" / "realtime_worker.py"
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(path))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+        self.assertNotIn("tkinter", imported)
+        self.assertNotIn("dependencies", imported)
+        self.assertNotIn("voiceflow_app.dependencies", imported)
 
     def test_queue_producers_use_typed_worker_contract(self) -> None:
         for relative in ("app/streaming.py", "app/hotkeys.py", "ui/tray.py"):
