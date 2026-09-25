@@ -89,3 +89,14 @@ The session controller remains authoritative for `session_id` and committed text
 Background realtime work produces `WorkerMessage` values. `worker_messages.classify_stream_result()` compares payload session id with the current controller session before `WorkerDispatchMixin` is allowed to update widgets or insertion state. A result from an old session is discarded; a current result arriving after immediate stop is also discarded unless the app is explicitly finalizing.
 
 This separation is important for stop→restart races: the old worker may physically finish later, but it must not mutate the new session.
+
+## Architecture 2.6 worker consumer
+
+`RealtimeWorkerEngine` consumes the session controller through the narrow `RealtimeSessionPort.transcribe_frames()` shape. It does not own session identity or committed inserted text.
+
+The distinction is intentional:
+- session controller = authoritative application session/lifecycle + service pipeline;
+- realtime worker = per-background-worker frame cursor and transcription prompt context;
+- worker dispatch = main-thread acceptance/application of typed results.
+
+A worker retry must never increment session id. A new recording session is still created only by `HeadlessSessionController.begin_capture()/start_capture()`.

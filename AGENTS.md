@@ -42,7 +42,8 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - app/controls.py — microphone + hotkey editor controls.
 - app/hotkeys.py — global hotkey polling/dispatch.
 - app/recording.py — start/stop/warm-up.
-- app/streaming.py — realtime producer/recognition/insertion orchestration; no main-thread queue dispatch.
+- app/realtime_worker.py — headless frame cursor/transcription-context/chunk lifecycle/message producer engine.
+- app/streaming.py — application adapter plus realtime text shaping/insertion helpers; no frame loop or main-thread dispatch.
 - app/worker_dispatch.py — typed worker queue decoding, stale-session gates and main-thread UI/application routing.
 - worker_messages.py — typed queue message kinds/payloads and pure session-result gates.
 - app/actions.py — copy/paste/settings/window lifecycle/shutdown.
@@ -73,9 +74,10 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 ## Task routing
 
 Microphone capture -> services/audio.py + app/session_controller.py + app/recording.py. Microphone enumeration -> audio_devices.py + app/controls.py.
-Whisper/model -> services/transcription.py + app/streaming.py. CUDA/DLL/preflight -> cuda_runtime.py.
+Whisper/model -> services/transcription.py + app/realtime_worker.py; app/streaming.py only selects runtime model/quality and adapts UI settings. CUDA/DLL/preflight -> cuda_runtime.py.
 Duplicates/missing realtime text -> core/realtime.py + app/session_controller.py committed state + app/streaming.py.
-Pause/noise/forced-commit behavior -> services/audio_analysis.py + core/realtime_policy.py.
+Pause/noise/forced-commit behavior -> services/audio_analysis.py + core/realtime_policy.py + app/realtime_worker.py.
+Frame cursor/transcription retry/context reset/WAV cleanup -> app/realtime_worker.py + tests/test_realtime_worker.py.
 Stale worker result / queue race -> worker_messages.py + app/worker_dispatch.py + worker_queue.jsonl.
 Punctuation/cleanup -> services/text_cleaner.py.
 Voice commands -> voice_commands.py parsing + app/streaming.py execution.
@@ -134,3 +136,13 @@ Realtime ownership is deliberately split: `services/audio_analysis.py` measures 
 All new producer messages should use `put_worker_message(...)` with `WorkerMessageKind`; do not reintroduce `worker_queue.put(("string", payload))`. Stale/after-stop result acceptance belongs in `worker_messages.py`, not scattered UI branches.
 
 Before changing pause/noise/cancellation/session-result behavior, read `docs/REALTIME_PIPELINE.md` and run `test_realtime_audio.py`, `test_realtime_policy.py`, `test_worker_messages.py` plus the existing realtime/session suite.
+
+## Architecture 2.6 headless realtime worker
+
+`app/realtime_worker.py::RealtimeWorkerEngine` is now the owner of the background realtime loop: frame cursor, audio-policy application, `HeadlessSessionController.transcribe_frames()`, raw/clean transcription context, bad-chunk advancement, temporary WAV cleanup and typed result/warning production.
+
+`app/streaming.py` must remain an adapter/presentation-side module: build `RealtimeWorkerConfig`, provide existing text-clean/dedupe callbacks, start the thread, and apply insertion/voice-command helpers. Do not move the frame loop back into it.
+
+Failure invariant: if transcription throws before returning a `SessionTranscript`, cleanup must not mask the original exception. The worker intentionally keeps the frame cursor on the previous index for a transcription failure so the next iteration can retry overlapping audio; filtered/noise chunks advance the cursor so one bad chunk cannot freeze dictation.
+
+Before worker-loop changes, read `docs/REALTIME_PIPELINE.md` and run `tests/test_realtime_worker.py` together with realtime policy/message/session tests.

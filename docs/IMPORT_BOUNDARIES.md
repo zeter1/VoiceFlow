@@ -104,3 +104,14 @@ Dependency direction:
 - `app/worker_dispatch.py` may call app/UI methods but must not become an inference/audio worker.
 
 Do not place signal math back into `streaming.py`, do not place Tk/application effects into `worker_messages.py`, and do not bypass typed producers with new direct tuple queue writes.
+
+## Architecture 2.6 worker-engine boundary
+
+Canonical owner for the background frame loop is now `app/realtime_worker.py`.
+
+Allowed direction:
+- `app/streaming.py` → `app/realtime_worker.py` to build/configure/run the engine;
+- `app/realtime_worker.py` → service contracts, session transcription DTO/port, audio analysis, pure realtime policy, voice-command text splitter, diagnostics and worker message contract;
+- `app/realtime_worker.py` must not import Tkinter, pyautogui, tray/notification adapters or Windows insertion APIs.
+
+Do not move `get_frames_since`, `SessionTranscriptionRequest`, frame-cursor retry rules or temporary-WAV cleanup back into `app/streaming.py`. Do not move UI/paste side effects into `RealtimeWorkerEngine`.

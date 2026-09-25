@@ -21,6 +21,7 @@
 - работу `faster-whisper` в режимах CPU и NVIDIA CUDA;
 - потоковую обработку аудио без ожидания конца всей диктовки;
 - интеграцию с Windows: глобальные hotkeys, активное поле ввода, tray и автозапуск;
+- headless realtime worker с отдельными frame-cursor/retry/message contracts;
 - координацию фоновых задач, очередей и пользовательского интерфейса;
 - privacy-first подход: распознавание после загрузки модели выполняется локально;
 - отдельную диагностику для hotkeys, записи, распознавания и вставки текста.
@@ -93,9 +94,9 @@ microphone
    ↓
 audio capture
    ↓
-realtime audio statistics
+headless realtime worker
    ↓
-commit / pause policy
+realtime audio statistics + commit / pause policy
    ↓
 faster-whisper inference
    ↓

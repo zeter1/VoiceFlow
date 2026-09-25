@@ -63,7 +63,8 @@ app/ui.py — widgets/state/notifications.
 app/controls.py — microphone/hotkey editor.
 app/hotkeys.py — Windows polling/dispatch; edge/debounce decisions делегируются core/hotkey_state.py.
 app/recording.py — side effects start/stop/warm-up; state classification делегируется core/recording_state.py.
-app/streaming.py — realtime worker, transcription/context, text-piece/insertion and voice-command execution; timing/audio/dispatch decisions делегируются отдельным owners.
+app/realtime_worker.py — headless frame cursor/transcription context, audio-policy application, bad-chunk recovery, WAV cleanup and typed message production.
+app/streaming.py — realtime thread/config adapter plus text shaping/insertion and voice-command execution; frame loop/timing/audio/dispatch decisions делегируются отдельным owners.
 app/worker_dispatch.py — main-thread worker queue decode, stale-session/after-stop gates, UI/application routing.
 worker_messages.py — typed queue message contract.
 app/actions.py — copy/paste, settings, window lifecycle and shutdown.
@@ -135,10 +136,26 @@ Realtime path теперь проходит через отдельные owners
 
 `audio_analysis` отвечает только за измеряемые signal facts: duration/RMS/peak/activity/trailing silence и adaptive speech pause. `realtime_policy` принимает facts + profile и возвращает wait/advance/commit/final-cancel decision. Это позволяет тестировать шум/паузы и timing без Tk, Whisper и микрофона.
 
-`app/streaming.py` остаётся producer/orchestrator: получает frames, вызывает headless session transcription, применяет text cleanup/dedupe policy и публикует typed worker messages.
+`app/realtime_worker.py` является headless producer/orchestrator: получает frames, применяет audio/timing policy, вызывает headless session transcription, держит raw/clean context, продвигает/retries frame cursor, чистит temporary WAV и публикует typed worker messages. `app/streaming.py` создаёт/configures engine и оставляет у себя UI-side text shaping/insertion helpers.
 
 `worker_messages.py` является contract между background producers и main thread. `app/worker_dispatch.py` — единственный owner main-thread decode/application routing; stale session и result-after-stop проверяются до изменения UI.
 
 Critical invariant: worker старой session не должен менять текущую session. Queue producer не должен снова использовать ad-hoc string/tuple contract там, где существует WorkerMessageKind/payload dataclass.
 
 See also: REALTIME_PIPELINE.md.
+
+## Architecture 2.6 worker engine
+
+`RealtimeWorkerEngine` физически отделяет background speech loop от Tk-oriented mixin. Его constructor принимает recorder/session/message ports и deterministic seams для audio stats, chunk cleanup, dedupe и sleep, поэтому полный worker flow тестируется без microphone, Whisper model, CUDA и Tk.
+
+Cursor semantics являются contract:
+- insufficient duration → wait на том же cursor;
+- probable noise/non-speech → advance;
+- filtered hallucination/empty transcription → advance;
+- successful result/deduped result → advance;
+- transcription exception → warning + cursor stays, allowing overlapping retry;
+- stop with final-chunk disabled → no final inference.
+
+Temporary WAV cleanup выполняется только если `SessionTranscript` действительно вернул path; exception до этого не может быть заменена cleanup error.
+
+Primary proof: `tests/test_realtime_worker.py`.

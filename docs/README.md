@@ -10,7 +10,7 @@
 - [IMPORT_BOUNDARIES.md](IMPORT_BOUNDARIES.md) — canonical owners, dependency directions и запреты на facade/wildcard coupling.
 - [SERVICE_CONTRACTS.md](SERVICE_CONTRACTS.md) — service ports, adapters, injection seams и offline testing.
 - [APPLICATION_SESSION.md](APPLICATION_SESSION.md) — composition root, session state ownership, headless lifecycle/race tests.
-- [REALTIME_PIPELINE.md](REALTIME_PIPELINE.md) — audio statistics, commit policy, typed worker queue, stale-session/cancellation contracts.
+- [REALTIME_PIPELINE.md](REALTIME_PIPELINE.md) — headless RealtimeWorkerEngine, audio/commit policy, frame-cursor recovery, typed queue and stale-session/cancellation contracts.
 - [../AGENTS.md](../AGENTS.md) — стабильные repo-инварианты и правила AI coding agents.
 
 ## Пользовательское обучение

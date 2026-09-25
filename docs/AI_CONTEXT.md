@@ -36,7 +36,8 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 - app/controls.py: microphone/hotkey controls.
 - app/hotkeys.py: registration/polling/debounce/dispatch.
 - app/recording.py: recording state transitions and warm-up.
-- app/streaming.py: realtime producer/recognition/insertion orchestration; emits typed worker messages.
+- app/realtime_worker.py: headless frame cursor, transcription context, chunk processing, WAV cleanup and typed message production.
+- app/streaming.py: thin realtime application adapter plus text shaping/insertion/voice-command helpers.
 - app/worker_dispatch.py: main-thread typed queue decode, stale-session/after-stop filtering and UI/application routing.
 - worker_messages.py: message kinds/payloads, legacy coercion seam and pure session-result gates.
 - app/actions.py: copy/paste/settings/shutdown.
@@ -55,7 +56,7 @@ Tk main thread handles widgets. Capture/inference use background execution. Work
 
 ## Realtime contract
 
-Confirmed fragments are inserted during recording. `services/audio_analysis.py` owns audio evidence, `core/realtime_policy.py` owns commit/cancel policy, `core/realtime.py` owns pure text decisions, `HeadlessSessionController` owns committed-text/session state, `app/streaming.py` owns worker/recognition/insertion production, and `app/worker_dispatch.py` owns main-thread message application. Stop must release session state without pasting the full transcript again.
+Confirmed fragments are inserted during recording. `services/audio_analysis.py` owns audio evidence, `core/realtime_policy.py` owns commit/cancel policy, `core/realtime.py` owns pure text decisions, `HeadlessSessionController` owns session identity/transcription service coordination/committed inserted text, `RealtimeWorkerEngine` owns the background frame/transcription loop, `app/streaming.py` adapts settings and owns insertion-side text helpers, and `app/worker_dispatch.py` owns main-thread message application. Stop must release session state without pasting the full transcript again.
 
 ## Hotkey diagnostics
 
@@ -119,6 +120,13 @@ Hardware/environment knowledge must stop at adapter boundaries. `LocalTranscribe
 
 Результат старой session, поздний message после stop, queue payload → `worker_messages.py` + `app/worker_dispatch.py` + `worker_queue.jsonl`.
 
-Thread/Whisper worker lifecycle → `app/streaming.py`.
+Frame cursor / worker retry / transcription context / temp WAV cleanup → `app/realtime_worker.py`.
+Thread creation/stop/finalizer adapter → `app/streaming.py`.
 
 Полная карта и invariants: [REALTIME_PIPELINE.md](REALTIME_PIPELINE.md).
+
+## Realtime worker failure route
+
+Если после одной transcription error поток перестал печатать: сначала `tests/test_realtime_worker.py` и `app/realtime_worker.py`. Проверяй cursor semantics: noise/filtered chunk должен advance, transcription exception — оставить cursor для retry и отправить исходный `StreamWarningPayload`.
+
+Если ошибка говорит про cleanup/WAV после другой ошибки, проверь `wav_path: Optional[Path] = None` и cleanup only-after-successful-path assignment. Не маскируй исходную transcription exception broad suppression.

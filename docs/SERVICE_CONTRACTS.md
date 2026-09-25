@@ -106,3 +106,11 @@ Offline proof: `tests/test_session_controller.py` covers start→frames→transc
 Its threshold/stat-summary helpers are dependency-free. The production `stream_audio_stats()` wrapper imports NumPy lazily, so policy/unit tests do not require audio runtime initialization.
 
 Do not move commit timing into this adapter. Audio analysis reports facts; `core/realtime_policy.py` decides what those facts mean for streaming.
+
+## RealtimeSessionPort
+
+Owner: `app/realtime_worker.py` as a narrow internal Protocol. Production implementation is structurally satisfied by `HeadlessSessionController.transcribe_frames()`.
+
+Purpose: let the worker engine orchestrate frames → WAV → transcription without depending on Tk/application shell or concrete Whisper implementation.
+
+The worker still receives `AudioRecorderContract`; microphone implementation details stay in `services/audio.py`. Tests can supply recorder/session fakes plus deterministic audio stats without importing or initializing hardware.
