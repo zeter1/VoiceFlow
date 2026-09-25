@@ -176,3 +176,29 @@ Critical metadata path:
 `StreamResultPayload.commit_meta → WorkerDispatchMixin → RealtimeTextPipeline.plan_stream_result() → prepare_stream_chunk_for_paste()`.
 
 Если этот путь разорван, realtime может распознать правильную паузу, но вставить текст с неправильной пунктуацией. Architecture 2.7 добавляет regression proof именно для этого пути.
+
+## Architecture 2.8 delivery ports and side-effect isolation
+
+The final realtime path is now split into plan vs delivery vs presentation:
+
+```text
+RealtimeTextPipeline
+        ↓ RealtimeInsertionPlan / command
+RealtimeDeliveryController
+        ↓ injected ports
+TextInsertionPort / VoiceActionPort
+        ↓
+desktop_delivery.py
+        ↓ lazy
+windows_insertion.py / clipboard / pyautogui
+        ↓
+active Windows target
+```
+
+`ApplicationServices` composes delivery ports alongside recorder/transcriber/cleaner and UI factories. Tests can provide fakes without importing desktop/audio runtimes.
+
+`DeliveryResult` carries success/failure code, error text and foreground/focus evidence. Realtime delivery converts it into domain-specific insertion/command outcomes. UI modules log/show notifications from those outcomes but do not perform pyautogui/native-paste operations directly.
+
+A successful external paste is the transactional boundary for committed text. Planned text is not committed until the external adapter reports success.
+
+Architecture 2.8 also removes the old unused `_process_audio_worker` + RESULT/ERROR queue path and the unused async STREAM_FINISHED/STREAM_FINISH_TIMEOUT finalizer. Current product behavior is realtime-only: stop releases immediately and does not launch a second final transcription/paste pipeline.

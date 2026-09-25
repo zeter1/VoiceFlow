@@ -111,3 +111,11 @@ The order is:
 3. only on successful paste call `session_controller.record_commit(plan.insertion.text)`.
 
 This prevents planned-but-failed paste attempts from contaminating dedupe state.
+
+## Delivery commit transaction
+
+Architecture 2.8 makes the external paste result explicit.
+
+`RealtimeDeliveryController.deliver_insertion(plan)` returns `committed_text=plan.text` only when the injected text-insertion port succeeds; on failure it returns an empty committed text.
+
+The application then calls `HeadlessSessionController.record_commit()` only for a successful delivery outcome. Therefore session committed text continues to mean “text known to have been delivered”, not merely “text planned for delivery”.

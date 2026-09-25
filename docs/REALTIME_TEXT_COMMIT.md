@@ -123,13 +123,16 @@ The command is executed later by `app/streaming.py`; the headless planner never 
 2. builds `RealtimeResultPlan`;
 3. passes planned display/insertion data to streaming side effects.
 
+`app/realtime_delivery.py`:
+- sends `insertion.paste_text` through `TextInsertionPort`;
+- sends planned voice commands through `VoiceActionPort`;
+- returns structured outcomes without Tk/Windows imports.
+
 `app/streaming.py`:
 - appends text to Tk widgets;
-- logs the punctuation decision;
-- calls current-target paste with `insertion.paste_text`;
-- on success records `insertion.text`;
-- executes an already-planned voice command;
-- shows notifications.
+- logs the punctuation/delivery outcome;
+- records `insertion.text` only after successful delivery;
+- updates status/notifications.
 
 It should not recalculate dedupe, command split or punctuation.
 
@@ -165,3 +168,9 @@ Still NOT VERIFIED without interactive Windows evidence:
 - privilege mismatch;
 - pyautogui command execution;
 - real Whisper punctuation quality and pause timing.
+
+## Delivery port handoff
+
+Architecture 2.8 moves the actual paste/action call behind `RealtimeDeliveryController`. `RealtimeTextPipeline` still owns **what** should happen; delivery ports own **performing** the external effect.
+
+Read DELIVERY_PORTS.md when the planned text is correct but the desktop action is wrong.

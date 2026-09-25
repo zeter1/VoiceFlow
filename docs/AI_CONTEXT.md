@@ -20,7 +20,8 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 - voice_commands.py: voice command vocabulary/parsing.
 - windows.py: compatibility re-export for historical callers.
 - windows_startup.py: registry startup command/state.
-- windows_insertion.py: focused HWND/caret target and native paste.
+- windows_insertion.py: low-level focused HWND/caret target and native Ctrl+V.
+- desktop_delivery.py: concrete TextInsertionPort / VoiceActionPort adapters, optional clipboard/pyautogui and lazy Windows helper resolution.
 - core/realtime.py: pure realtime text/dedupe/punctuation decisions.
 - core/realtime_policy.py: timing profiles, speech/chunk commit and final-cancellation decisions.
 - core/recording_state.py: pure recording state/repair classification.
@@ -30,7 +31,7 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 - services/transcription.py: model lifecycle and inference; backend environment is injected.
 - services/text_cleaner.py: punctuation/fillers/grammar/formatting.
 - services/contracts.py: Protocol contracts for the three service boundaries.
-- app/ports.py: Notification/Tray Protocol ports.
+- app/ports.py: Notification/Tray/TextInsertion/VoiceAction Protocol ports and DeliveryResult.
 - app/session_controller.py: headless session lifecycle, session_id, committed realtime text and service pipeline.
 - app/ui.py: Tk interface.
 - app/controls.py: microphone/hotkey controls.
@@ -38,7 +39,8 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 - app/recording.py: recording state transitions and warm-up.
 - app/realtime_worker.py: headless frame cursor, transcription context, chunk processing, WAV cleanup and typed message production.
 - app/realtime_text_pipeline.py: headless recognized-text → display/command/insertion planning, including exact paste payload.
-- app/streaming.py: thin realtime application adapter plus actual Tk rendering/paste/voice-command side effects.
+- app/realtime_delivery.py: headless exact-paste/voice-action coordinator over injected ports.
+- app/streaming.py: thin realtime application adapter plus Tk rendering/notifications; no direct desktop delivery APIs.
 - app/worker_dispatch.py: main-thread typed queue decode, stale-session/after-stop filtering and UI/application routing.
 - worker_messages.py: message kinds/payloads, legacy coercion seam and pure session-result gates.
 - app/actions.py: copy/paste/settings/shutdown.
@@ -57,7 +59,7 @@ Tk main thread handles widgets. Capture/inference use background execution. Work
 
 ## Realtime contract
 
-Confirmed fragments are inserted during recording. `services/audio_analysis.py` owns audio evidence, `core/realtime_policy.py` owns commit/cancel policy, `core/realtime.py` owns primitive pure text algorithms, `HeadlessSessionController` owns session identity/transcription service coordination/committed inserted text, `RealtimeWorkerEngine` owns the background frame/transcription loop, `RealtimeTextPipeline` owns recognized-text cleanup/command/dedupe/punctuation/exact insertion planning, `app/worker_dispatch.py` applies the plan on the main thread, and `app/streaming.py` performs the actual UI/paste/voice-command side effects. Stop must release session state without pasting the full transcript again.
+Confirmed fragments are inserted during recording. `services/audio_analysis.py` owns audio evidence, `core/realtime_policy.py` owns commit/cancel policy, `core/realtime.py` owns primitive pure text algorithms, `HeadlessSessionController` owns session identity/transcription service coordination/committed inserted text, `RealtimeWorkerEngine` owns the background frame/transcription loop, `RealtimeTextPipeline` owns recognized-text cleanup/command/dedupe/punctuation/exact insertion planning, `app/worker_dispatch.py` applies the plan on the main thread, `RealtimeDeliveryController` coordinates delivery through injected ports, and `app/streaming.py` owns Tk presentation/notifications rather than desktop APIs. Stop must release session state without pasting the full transcript again.
 
 ## Hotkey diagnostics
 
@@ -65,7 +67,7 @@ Symptom "works once", double start/stop or stuck hotkey: inspect app/hotkeys.py,
 
 ## Insertion diagnostics
 
-For wrong target/paste failure: windows_insertion.py + app/actions.py + insertion.jsonl. Check foreground restoration, clipboard/native Ctrl+V fallback and privilege mismatch.
+For wrong target/paste failure: app/realtime_delivery.py + desktop_delivery.py + windows_insertion.py + insertion.jsonl. Check planned payload, DeliveryResult code, current foreground/focus evidence, clipboard/native Ctrl+V fallback and privilege mismatch.
 
 ## Logs
 
@@ -139,3 +141,13 @@ Thread creation/stop/finalizer adapter → `app/streaming.py`.
 Voice command попал в обычный текст или текст перед командой потерялся → `plan_stream_result()` + `voice_commands.py`.
 
 Pause metadata видно в worker payload, но вставленная пунктуация неверна → проверь, что `worker_dispatch.py` передаёт `commit_meta` без потерь. Полная карта: [REALTIME_TEXT_COMMIT.md](REALTIME_TEXT_COMMIT.md).
+
+## Delivery debugging route
+
+Planned text correct, but no text appears in target → `app/realtime_delivery.py` outcome + `desktop_delivery.py` + `windows_insertion.py`.
+
+Wrong commit/dedupe after failed paste → verify `deliver_insertion()` returns empty `committed_text` on failure and `streaming.py` calls `record_commit()` only on success.
+
+Voice command parsed but not executed → inspect `VoiceCommandDeliveryOutcome.code/error`, then `CurrentTargetVoiceActionAdapter`.
+
+Offline import unexpectedly asks for NumPy/sounddevice → check that `desktop_delivery.py` does not import `dependencies.py` or `windows_insertion.py` eagerly. Full map: [DELIVERY_PORTS.md](DELIVERY_PORTS.md).

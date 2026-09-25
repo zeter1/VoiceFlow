@@ -23,7 +23,8 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - voiceflow_app/audio_devices.py — microphone/input-device discovery adapter.
 - voiceflow_app/cuda_runtime.py — CUDA runtime/DLL/preflight adapter and backend policy.
 - voiceflow_app/windows_startup.py — Windows startup-registry adapter.
-- voiceflow_app/windows_insertion.py — foreground target and native paste adapter.
+- voiceflow_app/windows_insertion.py — low-level foreground target and native Ctrl+V helpers.
+- voiceflow_app/desktop_delivery.py — concrete current-target text insertion + pyautogui voice-action adapters; Windows helpers are lazy-loaded.
 - voiceflow_app/hotkey_config.py — hotkey normalization/VK mapping.
 - voiceflow_app/settings.py — AppSettings/RuntimeSettings/SettingsStore.
 - voiceflow_app/voice_commands.py — command vocabulary and parsing.
@@ -36,7 +37,7 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - ui/notifications.py — notification windows.
 - ui/tray.py — system tray.
 - app/main_window.py — Tk shell/composition consumer; concrete services are injected.
-- app/ports.py — Notification/Tray application-facing Protocol ports.
+- app/ports.py — Notification/Tray/TextInsertion/VoiceAction application-facing Protocol ports + DeliveryResult.
 - app/session_controller.py — headless session_id/capture/committed-text/service-pipeline owner.
 - app/ui.py — widgets/state snapshots/notifications.
 - app/controls.py — microphone + hotkey editor controls.
@@ -44,7 +45,8 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - app/recording.py — start/stop/warm-up.
 - app/realtime_worker.py — headless frame cursor/transcription-context/chunk lifecycle/message producer engine.
 - app/realtime_text_pipeline.py — headless cleanup/dedupe/voice-command split/punctuation/exact insertion-plan owner.
-- app/streaming.py — application adapter plus actual Tk text rendering/paste/voice-command side effects; no frame loop or text-policy ownership.
+- app/realtime_delivery.py — headless delivery coordinator over TextInsertionPort / VoiceActionPort.
+- app/streaming.py — application adapter plus Tk presentation/notifications; desktop delivery is delegated to ports.
 - app/worker_dispatch.py — typed worker queue decoding, stale-session gates and main-thread UI/application routing.
 - worker_messages.py — typed queue message kinds/payloads and pure session-result gates.
 - app/actions.py — copy/paste/settings/window lifecycle/shutdown.
@@ -57,7 +59,8 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - docs/IMPORT_BOUNDARIES.md — canonical import owners and dependency directions.
 - docs/SERVICE_CONTRACTS.md — service ports, adapters, injection seams and offline-test strategy.
 - docs/REALTIME_PIPELINE.md — realtime audio→policy→worker-message→dispatch ownership and race contracts.
-- docs/REALTIME_TEXT_COMMIT.md — worker payload→text plan→exact paste payload→side-effect boundary.
+- docs/REALTIME_TEXT_COMMIT.md — worker payload→text plan→exact paste payload boundary.
+- docs/DELIVERY_PORTS.md — delivery ports, concrete desktop adapters, success/commit semantics and offline test seams.
 
 ## Critical invariants
 
@@ -82,9 +85,9 @@ Pause/noise/forced-commit behavior -> services/audio_analysis.py + core/realtime
 Frame cursor/transcription retry/context reset/WAV cleanup -> app/realtime_worker.py + tests/test_realtime_worker.py.
 Stale worker result / queue race -> worker_messages.py + app/worker_dispatch.py + worker_queue.jsonl.
 Punctuation/cleanup policy -> services/text_cleaner.py + app/realtime_text_pipeline.py. Exact paste payload / raw-vs-cleaned / trailing command split -> app/realtime_text_pipeline.py.
-Voice commands -> voice_commands.py parsing + app/realtime_text_pipeline.py split/plan + app/streaming.py execution.
+Voice commands -> voice_commands.py parsing + app/realtime_text_pipeline.py split/plan + app/realtime_delivery.py + desktop_delivery.py execution.
 Hotkey starts once/double fires -> app/hotkeys.py + hotkey_trace.jsonl.
-Wrong-window/paste failure -> windows_insertion.py + app/actions.py + insertion.jsonl.
+Wrong-window/paste failure -> app/realtime_delivery.py + desktop_delivery.py + windows_insertion.py + insertion.jsonl.
 Tray/notification -> ui/*.
 Settings/autostart -> settings.py + windows_startup.py + app/actions.py.
 EXE/release -> workflow + RELEASE_NOTES_RU.md.
@@ -156,3 +159,15 @@ Before worker-loop changes, read `docs/REALTIME_PIPELINE.md` and run `tests/test
 `app/worker_dispatch.py` must pass the full `StreamResultPayload.commit_meta` into `plan_stream_result()` before any UI/paste effect. Do not drop `sentence_pause`, `pause_seconds`, `forced_commit` or `whisper_sentence_end`: those facts affect the exact inserted text.
 
 `app/streaming.py` may render widgets, call Windows paste and execute already-planned voice commands, but it should not reimplement dedupe/punctuation/command-split decisions. Before text-insertion changes, read `docs/REALTIME_TEXT_COMMIT.md` and run `tests/test_realtime_text_pipeline.py`.
+
+## Architecture 2.8 delivery boundary
+
+Desktop side effects are now injected services. `TextInsertionPort` and `VoiceActionPort` live in `app/ports.py`; production implementations live in `desktop_delivery.py`; `RealtimeDeliveryController` in `app/realtime_delivery.py` is headless and returns structured outcomes.
+
+Commit invariant: `HeadlessSessionController.record_commit()` happens only after `RealtimeDeliveryController.deliver_insertion()` reports success. A failed paste must never advance committed-text/dedupe state.
+
+`desktop_delivery.py` must remain importable in offline tests without NumPy/sounddevice or eager Windows adapter initialization. Optional pyperclip/pyautogui imports are local to that adapter module, while `windows_insertion` is resolved lazily at actual delivery time.
+
+The old non-realtime RESULT/ERROR/finalizer queue path was removed in Architecture 2.8. Do not reintroduce a second final transcription/paste path unless product behavior explicitly changes away from realtime-only stop.
+
+Before delivery changes read `docs/DELIVERY_PORTS.md` and run `tests/test_realtime_delivery.py`, `tests/test_desktop_delivery.py`, `tests/test_repository_contract.py`.

@@ -213,3 +213,23 @@ StreamResultPayload(raw, cleaned, commit_meta)
 `commit_meta` is part of the behavioral contract, not optional logging decoration. It carries pause/forced-commit/Whisper-end facts that determine punctuation and continuation casing.
 
 See REALTIME_TEXT_COMMIT.md for detailed decision rules and offline test matrix.
+
+## Architecture 2.8 delivery stage
+
+The main-thread accepted/planned result now crosses one more explicit boundary before desktop effects:
+
+```text
+RealtimeResultPlan
+      ↓
+RealtimeDeliveryController
+      ↓
+TextInsertionPort / VoiceActionPort
+      ↓
+desktop_delivery.py
+      ↓
+current Windows target
+```
+
+The controller is headless and fake-testable. Concrete clipboard/pyautogui/Windows operations are not imported by `streaming.py`.
+
+The legacy non-realtime RESULT/ERROR/finalizer queue path was removed because no production caller remained after realtime-only stop behavior was established.

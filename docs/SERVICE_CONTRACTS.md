@@ -120,3 +120,15 @@ The worker still receives `AudioRecorderContract`; microphone implementation det
 `RealtimeTextPipeline` is the realtime consumer of `TextCleanerContract`. It calls cleaner with `deep_grammar=False` for low-latency streaming chunks, then applies the pure bad-text/open-sentence rules before returning worker-cleanup output.
 
 The pipeline depends on the service contract, not on `LocalTextCleaner` directly, so fake cleaners can prove exact cleanup/insertion behavior offline.
+
+## Desktop delivery ports
+
+`app/ports.py` now also defines `TextInsertionPort`, `VoiceActionPort` and `DeliveryResult`.
+
+Production adapters:
+- `desktop_delivery.py::CurrentTargetTextInsertionAdapter`;
+- `desktop_delivery.py::CurrentTargetVoiceActionAdapter`.
+
+These are application/external-effect ports, not audio/transcription services. They are included in `ApplicationServices` so the app can receive fake delivery ports in tests.
+
+The desktop adapter exposes injectable clipboard, automation, target getter, paste sender and sleep seams. Windows insertion helpers are resolved lazily; importing the adapter for offline tests must not require NumPy/sounddevice or initialize real Windows delivery.

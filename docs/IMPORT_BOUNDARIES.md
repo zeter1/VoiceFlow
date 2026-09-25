@@ -128,3 +128,21 @@ Canonical owners:
 `app/realtime_text_pipeline.py` may depend on core text algorithms, `TextCleanerContract` and pure `voice_commands.py`. It must not import Tkinter, pyautogui, Windows insertion or runtime facade.
 
 Do not make `worker_dispatch.py` manually rebuild punctuation/dedupe decisions. Do not make `streaming.py` choose raw-vs-cleaned or split trailing commands again. Preserve `commit_meta` through the planner.
+
+## Architecture 2.8 delivery boundaries
+
+Canonical owners:
+- delivery Protocols/result DTO → `app/ports.py`;
+- headless realtime delivery orchestration → `app/realtime_delivery.py`;
+- concrete clipboard/current-target/pyautogui adapters → `desktop_delivery.py`;
+- low-level HWND/native Ctrl+V helpers → `windows_insertion.py`;
+- UI status/notifications after delivery → `app/streaming.py`.
+
+Dependency direction:
+- `app/realtime_delivery.py` → app ports + realtime insertion plan only;
+- `app/streaming.py` → `RealtimeDeliveryController`, never pyautogui/windows insertion;
+- `composition.py` wires concrete delivery adapters lazily;
+- `desktop_delivery.py` may import optional pyperclip/pyautogui but must not import shared audio `dependencies.py`;
+- Windows helper imports from `desktop_delivery.py` must remain function-local/lazy so offline delivery tests do not initialize the desktop/audio graph.
+
+Do not bypass `TextInsertionPort` for realtime paste. Do not record session commits before delivery success.

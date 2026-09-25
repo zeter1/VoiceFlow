@@ -22,6 +22,7 @@
 - потоковую обработку аудио без ожидания конца всей диктовки;
 - интеграцию с Windows: глобальные hotkeys, активное поле ввода, tray и автозапуск;
 - headless realtime worker с отдельными frame-cursor/retry/message contracts;
+- dependency-inverted text/voice delivery через тестируемые application ports;
 - координацию фоновых задач, очередей и пользовательского интерфейса;
 - privacy-first подход: распознавание после загрузки модели выполняется локально;
 - отдельную диагностику для hotkeys, записи, распознавания и вставки текста.
@@ -106,12 +107,14 @@ typed worker queue + stale-session gate
    ↓
 headless text commit / punctuation / command plan
    ↓
-exact Windows paste side effect
+headless delivery controller + injected ports
+   ↓
+exact Windows paste / voice-action adapter
    ↓
 active application
 ```
 
-Подробно границы подсистем, lifecycle диктовки, CPU/CUDA paths, deduplication и insertion layer описаны в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Для ChatGPT/Codex есть отдельная карта: [`AGENTS.md`](AGENTS.md) + [`docs/AI_CONTEXT.md`](docs/AI_CONTEXT.md) + [`docs/IMPORT_BOUNDARIES.md`](docs/IMPORT_BOUNDARIES.md) + [`docs/APPLICATION_SESSION.md`](docs/APPLICATION_SESSION.md) + [`docs/REALTIME_PIPELINE.md`](docs/REALTIME_PIPELINE.md) + [`docs/REALTIME_TEXT_COMMIT.md`](docs/REALTIME_TEXT_COMMIT.md).
+Подробно границы подсистем, lifecycle диктовки, CPU/CUDA paths, deduplication и insertion layer описаны в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Для ChatGPT/Codex есть отдельная карта: [`AGENTS.md`](AGENTS.md) + [`docs/AI_CONTEXT.md`](docs/AI_CONTEXT.md) + [`docs/IMPORT_BOUNDARIES.md`](docs/IMPORT_BOUNDARIES.md) + [`docs/APPLICATION_SESSION.md`](docs/APPLICATION_SESSION.md) + [`docs/REALTIME_PIPELINE.md`](docs/REALTIME_PIPELINE.md) + [`docs/REALTIME_TEXT_COMMIT.md`](docs/REALTIME_TEXT_COMMIT.md) + [`docs/DELIVERY_PORTS.md`](docs/DELIVERY_PORTS.md).
 
 ## Конфиденциальность
 
@@ -199,6 +202,7 @@ CI выполняет syntax/compile и offline repository-contract regression t
 - [Service contracts и adapters](docs/SERVICE_CONTRACTS.md)
 - [Realtime pipeline, queue contracts и race guards](docs/REALTIME_PIPELINE.md)
 - [Realtime text commit и exact insertion decisions](docs/REALTIME_TEXT_COMMIT.md)
+- [Delivery ports и desktop side-effect isolation](docs/DELIVERY_PORTS.md)
 - [Repo-инструкции для AI-агентов](AGENTS.md)
 - дополнительные пользовательские инструкции находятся в каталоге [`docs/`](docs/)
 - [Security and privacy](SECURITY.md)

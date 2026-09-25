@@ -12,6 +12,7 @@
 - [APPLICATION_SESSION.md](APPLICATION_SESSION.md) — composition root, session state ownership, headless lifecycle/race tests.
 - [REALTIME_PIPELINE.md](REALTIME_PIPELINE.md) — headless RealtimeWorkerEngine, audio/commit policy, frame-cursor recovery, typed queue and stale-session/cancellation contracts.
 - [REALTIME_TEXT_COMMIT.md](REALTIME_TEXT_COMMIT.md) — cleanup/dedupe/voice-command/punctuation planning and exact paste-payload boundary.
+- [DELIVERY_PORTS.md](DELIVERY_PORTS.md) — TextInsertion/VoiceAction ports, concrete desktop adapters, commit-on-success semantics and fake-backed tests.
 - [../AGENTS.md](../AGENTS.md) — стабильные repo-инварианты и правила AI coding agents.
 
 ## Пользовательское обучение
