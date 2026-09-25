@@ -7,6 +7,7 @@
 - [ARCHITECTURE.md](ARCHITECTURE.md) — physical architecture, owners, state/thread boundaries.
 - [AI_CONTEXT.md](AI_CONTEXT.md) — быстрый task → owner map для ChatGPT/Codex.
 - [DEVELOPMENT.md](DEVELOPMENT.md) — команды разработки, verification ladder и release discipline.
+- [IMPORT_BOUNDARIES.md](IMPORT_BOUNDARIES.md) — canonical owners, dependency directions и запреты на facade/wildcard coupling.
 - [../AGENTS.md](../AGENTS.md) — стабильные repo-инварианты и правила AI coding agents.
 
 ## Пользовательское обучение

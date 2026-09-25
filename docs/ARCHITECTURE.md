@@ -4,7 +4,7 @@ VoiceFlow физически разделён по ответственност�
 
 ## Dependency map
 
-voiceflow.py -> voiceflow_app.entrypoint -> app/main_window.py -> app mixins -> context.py -> runtime + services + ui infrastructure.
+voiceflow.py -> voiceflow_app.entrypoint -> app/main_window.py -> app mixins -> focused owners (core/config/diagnostics/dependencies/hotkey_config/settings/voice_commands/windows/services/ui).
 
 voiceflow.py является только launcher и не должен снова накапливать бизнес-логику.
 
@@ -19,13 +19,13 @@ Architecture 2.1 убирает giant runtime owner:
 - settings.py — AppSettings, RuntimeSettings и SettingsStore;
 - voice_commands.py — vocabulary и text-to-command parsing;
 - windows.py — startup, HWND/focus target и native Ctrl+V;
-- runtime.py — только compatibility facade, без новой implementation logic.
+- runtime.py — только внешний compatibility facade с re-export owner symbols; внутренний код его не импортирует.
 
 При source-запуске APP_DIR остаётся корнем проекта. При frozen-запуске — каталогом VoiceFlow.exe.
 
 ## Pure core
 
-voiceflow_app/core/realtime.py содержит deterministic решения dedupe, bad-chunk rejection, punctuation, continuation casing, final-tail и trailing voice-command split. Он не импортирует Tkinter, device/Whisper runtime или context.py.
+voiceflow_app/core/realtime.py содержит deterministic решения dedupe, bad-chunk rejection, punctuation, continuation casing, final-tail и trailing voice-command split. Он не импортирует Tkinter, device/Whisper adapters или runtime facade.
 
 voiceflow_app/core/recording_state.py классифицирует recording snapshot и решает, когда idle state является stale/recoverable.
 
@@ -84,14 +84,16 @@ Real microphone, desktop hotkeys, tray, arbitrary target apps and user CUDA requ
 
 Do not rebuild a giant voiceflow.py.
 Keep new behavior in the closest owner module.
-Do not make context.py a dumping ground.
+Internal modules must not import runtime.py; import the focused owner directly.
 Prefer pure/testable helpers for parsing/dedupe/state decisions.
 Before cross-module state changes identify owner, invariant, failure semantics and verification route.
 
-See also: ../AGENTS.md, AI_CONTEXT.md, DEVELOPMENT.md, ../SECURITY.md.
+See also: ../AGENTS.md, AI_CONTEXT.md, IMPORT_BOUNDARIES.md, DEVELOPMENT.md, ../SECURITY.md.
 
 ## Compatibility boundary
 
-context.py удалён. app/* и entrypoint.py используют явные imports владельцев.
+context.py удалён. Architecture 2.2 перевела app/*, services/*, ui/* и entrypoint.py на явные owner imports.
 
-runtime.py временно сохраняет старый import surface для legacy services/UI infrastructure. Это один ограниченный compatibility seam; он не должен снова становиться source of truth. Следующий cleanup может перевести services/* и ui/* на прямые imports и затем ещё сильнее сократить facade.
+runtime.py не имеет внутренних consumers и сохраняется только как внешний compatibility import path. Он состоит только из package re-exports; repository contracts запрещают добавлять в него implementation или возвращать внутренние зависимости на facade.
+
+Подробные разрешённые направления зависимостей: IMPORT_BOUNDARIES.md.

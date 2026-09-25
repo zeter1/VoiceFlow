@@ -106,7 +106,7 @@ Windows text insertion
 active application
 ```
 
-Подробно границы подсистем, lifecycle диктовки, CPU/CUDA paths, deduplication и insertion layer описаны в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Для ChatGPT/Codex есть отдельная карта: [`AGENTS.md`](AGENTS.md) + [`docs/AI_CONTEXT.md`](docs/AI_CONTEXT.md).
+Подробно границы подсистем, lifecycle диктовки, CPU/CUDA paths, deduplication и insertion layer описаны в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Для ChatGPT/Codex есть отдельная карта: [`AGENTS.md`](AGENTS.md) + [`docs/AI_CONTEXT.md`](docs/AI_CONTEXT.md) + [`docs/IMPORT_BOUNDARIES.md`](docs/IMPORT_BOUNDARIES.md).
 
 ## Конфиденциальность
 
@@ -181,7 +181,7 @@ CI выполняет syntax/compile и offline repository-contract regression t
 - CUDA path требует совместимой локальной NVIDIA/CUDA/cuDNN-конфигурации;
 - вставка текста и глобальные hotkeys зависят от поведения конкретного Windows-приложения;
 - CI не подтверждает работу реального микрофона, CUDA, tray, hotkeys и вставки в сторонние приложения — эти сценарии требуют runtime-проверки в Windows;
-- `voiceflow.py` теперь является тонким совместимым entrypoint; реализация физически разделена по runtime/services/ui/app, а большое окно разбито на mixin-модули по ответственности.
+- `voiceflow.py` является тонким entrypoint; внутренняя реализация разделена по canonical owner-модулям, а `runtime.py` оставлен только как внешний compatibility facade.
 
 ## Документация и поддержка
 
@@ -189,6 +189,7 @@ CI выполняет syntax/compile и offline repository-contract regression t
 - [Пользовательские и обучающие инструкции](docs/user-guide/README.md)
 - [Карта проекта для AI/Codex](docs/AI_CONTEXT.md)
 - [Разработка и проверка](docs/DEVELOPMENT.md)
+- [Import boundaries для разработки и AI](docs/IMPORT_BOUNDARIES.md)
 - [Repo-инструкции для AI-агентов](AGENTS.md)
 - дополнительные пользовательские инструкции находятся в каталоге [`docs/`](docs/)
 - [Security and privacy](SECURITY.md)

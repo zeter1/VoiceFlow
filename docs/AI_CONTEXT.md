@@ -8,7 +8,7 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 
 ## Физическая карта
 
-- runtime.py: compatibility facade only; do not add new implementation.
+- runtime.py: external compatibility facade only; internal modules must not import it.
 - config.py: paths and runtime constants.
 - diagnostics.py: logs, diagnostics and exception hooks.
 - dependencies.py: third-party modules and microphone discovery.
@@ -51,7 +51,7 @@ Symptom "works once", double start/stop or stuck hotkey: inspect app/hotkeys.py,
 
 ## Insertion diagnostics
 
-For wrong target/paste failure: runtime Windows target helpers + app/actions.py + insertion.jsonl. Check foreground restoration, clipboard/native Ctrl+V fallback and privilege mismatch.
+For wrong target/paste failure: windows.py + app/actions.py + insertion.jsonl. Check foreground restoration, clipboard/native Ctrl+V fallback and privilege mismatch.
 
 ## Logs
 
@@ -83,4 +83,8 @@ Return: source commit -> actual delta -> checks PASS/FAIL -> NOT VERIFIED -> res
 
 User-facing guides are isolated under user-guide/. Technical/AI work should start from AGENTS.md, ARCHITECTURE.md, AI_CONTEXT.md and DEVELOPMENT.md rather than scanning tutorial files.
 
-Architecture 2.1 rule: app/* and entrypoint.py use explicit owner imports. context.py no longer exists. runtime.py is a compatibility surface, not an implementation owner.
+Architecture 2.2 rule: every internal module uses explicit owner imports; context.py is gone and runtime.py is external compatibility only. The enforced dependency map is documented in IMPORT_BOUNDARIES.md.
+
+## Import boundary shortcut
+
+Перед добавлением cross-module import открой [IMPORT_BOUNDARIES.md](IMPORT_BOUNDARIES.md). Если symbol уже имеет canonical owner, импортируй owner напрямую; не прокладывай зависимость через runtime.py.

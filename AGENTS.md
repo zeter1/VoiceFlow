@@ -38,6 +38,7 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - .github/workflows/python-check.yml — validation, package, self-test, release.
 - docs/AI_CONTEXT.md — task-to-file navigation.
 - docs/DEVELOPMENT.md — verification/release commands.
+- docs/IMPORT_BOUNDARIES.md — canonical import owners and dependency directions.
 
 ## Critical invariants
 
@@ -49,7 +50,7 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 6. Settings/logs remain ignored by Git and are private runtime data.
 7. CPU path must remain viable without NVIDIA; classify CUDA failures separately.
 8. voiceflow.py stays thin. Do not rebuild a monolith there.
-9. context.py is a transitional compatibility namespace, not misc.py.
+9. runtime.py is an external compatibility facade only. No internal module may depend on it.
 10. New logs must not intentionally expose secrets; dictated text is private data.
 
 ## Task routing
@@ -58,11 +59,11 @@ Microphone -> services/audio.py + app/recording.py.
 Whisper/CUDA/model -> services/transcription.py + app/streaming.py.
 Duplicates/missing realtime text -> app/streaming.py.
 Punctuation/cleanup -> services/text_cleaner.py.
-Voice commands -> runtime.py parsing + app/streaming.py execution.
+Voice commands -> voice_commands.py parsing + app/streaming.py execution.
 Hotkey starts once/double fires -> app/hotkeys.py + hotkey_trace.jsonl.
-Wrong-window/paste failure -> runtime.py target helpers + app/actions.py + insertion.jsonl.
+Wrong-window/paste failure -> windows.py target helpers + app/actions.py + insertion.jsonl.
 Tray/notification -> ui/*.
-Settings/autostart -> runtime.py + app/actions.py.
+Settings/autostart -> settings.py + windows.py + app/actions.py.
 EXE/release -> workflow + RELEASE_NOTES_RU.md.
 
 ## Change workflow
@@ -89,7 +90,7 @@ Know current source commit, review actual diff, pass relevant checks, inspect fi
 
 ## Compatibility migration status
 
-Architecture 2.1 removes context.py completely. App orchestration and entrypoint use explicit imports. runtime.py remains only as a bounded compatibility facade for legacy service/UI modules and external imports; new code imports the owning module directly.
+Architecture 2.2 removes every internal dependency on runtime.py and every wildcard import in voiceflow_app. runtime.py is external compatibility only and may re-export owner symbols, but it must contain no implementation. See docs/IMPORT_BOUNDARIES.md.
 
 ## Documentation split
 

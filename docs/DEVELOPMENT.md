@@ -26,6 +26,7 @@ python -m unittest discover -s tests -v
 # tests/test_realtime_core.py
 # tests/test_recording_state.py
 # tests/test_hotkey_state.py
+# Architecture 2.2 import boundaries: tests/test_repository_contract.py
 ~~~
 
 ## Evidence по типу изменения
@@ -55,3 +56,7 @@ Green compile не доказывает microphone/CUDA/hotkey behavior.
 ## Privacy
 
 voiceflow_logs и особенно dictation_text.txt могут содержать пользовательский текст. Не публиковать их без просмотра.
+
+## Import discipline
+
+Внутри voiceflow_app не использовать wildcard imports и не импортировать runtime.py. Использовать canonical owner из [IMPORT_BOUNDARIES.md](IMPORT_BOUNDARIES.md). runtime.py существует только для внешней обратной совместимости.
