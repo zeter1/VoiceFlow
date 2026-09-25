@@ -6,7 +6,41 @@ makes navigation, review and future extraction safer.
 
 from __future__ import annotations
 
-from ..context import *  # noqa: F401,F403 - compatibility surface for extracted methods
+import logging
+import platform
+import sys
+import time
+import traceback
+import tkinter as tk
+from tkinter import messagebox
+
+from ..config import (
+    APP_NAME,
+    COMPUTE_TYPE_OPTIONS,
+    INFERENCE_DEVICE_OPTIONS,
+    IS_WINDOWS,
+    LOCAL_WHISPER_MODEL,
+    QUALITY_OPTIONS,
+    STREAMING_MODE_OPTIONS,
+    STREAMING_SPEED_OPTIONS,
+    WHISPER_MODEL_OPTIONS,
+)
+from ..dependencies import keyboard, pyperclip, pystray
+from ..diagnostics import (
+    log_category,
+    log_event,
+    log_exception,
+    log_info,
+    log_warning,
+)
+from ..hotkey_config import normalize_hotkey, pretty_hotkey
+from ..settings import SettingsStore
+from ..windows import (
+    get_paste_target,
+    is_windows_startup_enabled,
+    send_ctrl_v_native,
+    set_windows_startup_enabled,
+)
 
 
 class ActionsMixin:

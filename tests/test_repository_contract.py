@@ -11,7 +11,13 @@ PACKAGE = ROOT / "voiceflow_app"
 
 EXPECTED_MODULES = {
     "runtime.py",
-    "context.py",
+    "config.py",
+    "dependencies.py",
+    "diagnostics.py",
+    "hotkey_config.py",
+    "settings.py",
+    "voice_commands.py",
+    "windows.py",
     "entrypoint.py",
     "core/realtime.py",
     "core/recording_state.py",
@@ -75,10 +81,32 @@ class RepositoryContractTests(unittest.TestCase):
             )
             self.assertFalse(bad, f"{relative} must remain pure/testable; forbidden imports: {bad}")
 
-    def test_context_wildcard_is_removed_from_new_state_owners(self) -> None:
-        for relative in ("app/main_window.py", "app/recording.py", "app/hotkeys.py"):
-            source = (PACKAGE / relative).read_text(encoding="utf-8")
-            self.assertNotIn("from ..context import *", source, relative)
+    def test_context_bridge_is_removed(self) -> None:
+        self.assertFalse((PACKAGE / "context.py").exists())
+
+    def test_app_and_entrypoint_do_not_use_context_or_wildcard_imports(self) -> None:
+        checked = [
+            PACKAGE / "entrypoint.py",
+            *sorted((PACKAGE / "app").glob("*.py")),
+        ]
+        for path in checked:
+            source = path.read_text(encoding="utf-8")
+            with self.subTest(path=path.relative_to(ROOT)):
+                self.assertNotIn("context import", source)
+                tree = ast.parse(source, filename=str(path))
+                wildcard_imports = [
+                    node
+                    for node in ast.walk(tree)
+                    if isinstance(node, ast.ImportFrom)
+                    and any(alias.name == "*" for alias in node.names)
+                ]
+                self.assertFalse(wildcard_imports, "App orchestration must use explicit imports")
+
+    def test_runtime_is_a_small_compatibility_facade(self) -> None:
+        runtime = PACKAGE / "runtime.py"
+        source = runtime.read_text(encoding="utf-8")
+        self.assertLessEqual(len(source.splitlines()), 180)
+        self.assertIn("Backward-compatible runtime facade", source)
 
     def test_source_mode_runtime_data_stays_at_repository_root(self) -> None:
         source = (PACKAGE / "runtime.py").read_text(encoding="utf-8")

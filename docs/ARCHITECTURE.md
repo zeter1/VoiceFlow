@@ -8,9 +8,18 @@ voiceflow.py -> voiceflow_app.entrypoint -> app/main_window.py -> app mixins -> 
 
 voiceflow.py является только launcher и не должен снова накапливать бизнес-логику.
 
-## Runtime
+## Runtime decomposition
 
-voiceflow_app/runtime.py содержит пути logs/settings, structured diagnostics, dependency probing, single-instance lock, voice-command parsing, Windows startup/foreground/paste helpers, hotkey normalization/VK mapping и settings models/store.
+Architecture 2.1 убирает giant runtime owner:
+
+- config.py — APP_DIR, log/settings paths и стабильные runtime constants;
+- diagnostics.py — structured logs, dependency snapshot, single-instance lock и exception hooks;
+- dependencies.py — numpy/sounddevice и optional third-party modules + microphone discovery;
+- hotkey_config.py — normalization, validation и Windows VK mapping;
+- settings.py — AppSettings, RuntimeSettings и SettingsStore;
+- voice_commands.py — vocabulary и text-to-command parsing;
+- windows.py — startup, HWND/focus target и native Ctrl+V;
+- runtime.py — только compatibility facade, без новой implementation logic.
 
 При source-запуске APP_DIR остаётся корнем проекта. При frozen-запуске — каталогом VoiceFlow.exe.
 
@@ -81,6 +90,8 @@ Before cross-module state changes identify owner, invariant, failure semantics a
 
 See also: ../AGENTS.md, AI_CONTEXT.md, DEVELOPMENT.md, ../SECURITY.md.
 
-## Transitional compatibility
+## Compatibility boundary
 
-context.py больше не используется main_window/recording/hotkeys, но пока остаётся bridge для нескольких legacy mixin-модулей. Удаление делается только после поэтапной замены wildcard imports и package/runtime proof.
+context.py удалён. app/* и entrypoint.py используют явные imports владельцев.
+
+runtime.py временно сохраняет старый import surface для legacy services/UI infrastructure. Это один ограниченный compatibility seam; он не должен снова становиться source of truth. Следующий cleanup может перевести services/* и ui/* на прямые imports и затем ещё сильнее сократить facade.

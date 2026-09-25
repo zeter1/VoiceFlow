@@ -11,10 +11,17 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 ## Fast map
 
 - voiceflow.py — thin compatibility launcher only.
-- voiceflow_app/runtime.py — constants, paths, diagnostics, settings and Windows adapters.
+- voiceflow_app/runtime.py — small backward-compatible facade only; new internal code must not put implementation here.
 - voiceflow_app/core/realtime.py — pure dedupe/punctuation/final-tail/voice-command decisions.
 - voiceflow_app/core/recording_state.py — pure recording-state classification.
 - voiceflow_app/core/hotkey_state.py — pure hotkey edge/debounce decisions.
+- voiceflow_app/config.py — paths and stable runtime constants.
+- voiceflow_app/diagnostics.py — logging, diagnostic snapshots and process-level failure handling.
+- voiceflow_app/dependencies.py — third-party dependency loading and microphone discovery.
+- voiceflow_app/hotkey_config.py — hotkey normalization/VK mapping.
+- voiceflow_app/settings.py — AppSettings/RuntimeSettings/SettingsStore.
+- voiceflow_app/voice_commands.py — command vocabulary and parsing.
+- voiceflow_app/windows.py — startup, foreground target and native paste adapters.
 - services/audio.py — AudioRecorder.
 - services/transcription.py — LocalTranscriber / faster-whisper.
 - services/text_cleaner.py — LocalTextCleaner.
@@ -82,7 +89,7 @@ Know current source commit, review actual diff, pass relevant checks, inspect fi
 
 ## Compatibility migration status
 
-context.py remains a temporary bridge for legacy orchestration mixins. Architecture 2.0 removes it from app/main_window.py, app/recording.py and app/hotkeys.py. Remaining wildcard consumers must be migrated incrementally with tests; do not delete context.py until static references and packaged runtime both prove it unused.
+Architecture 2.1 removes context.py completely. App orchestration and entrypoint use explicit imports. runtime.py remains only as a bounded compatibility facade for legacy service/UI modules and external imports; new code imports the owning module directly.
 
 ## Documentation split
 

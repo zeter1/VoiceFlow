@@ -6,7 +6,37 @@ makes navigation, review and future extraction safer.
 
 from __future__ import annotations
 
-from ..context import *  # noqa: F401,F403 - transitional compatibility for orchestration only
+import queue
+import re
+import threading
+import time
+import tkinter as tk
+from pathlib import Path
+from typing import Optional
+
+from ..config import (
+    HOTKEY_START_GUARD_SECONDS,
+    STREAM_FINAL_CHUNK_ON_STOP,
+    STREAM_FINISH_TIMEOUT_SECONDS,
+    STREAM_SENTENCE_PAUSE_SECONDS_BALANCE,
+    STREAM_SENTENCE_PAUSE_SECONDS_FAST,
+    STREAM_SENTENCE_PAUSE_SECONDS_QUALITY,
+)
+from ..dependencies import np, pyautogui
+from ..diagnostics import (
+    log_category,
+    log_dictation_text,
+    log_exception,
+    log_info,
+    log_warning,
+)
+from ..settings import RuntimeSettings
+from ..voice_commands import (
+    normalize_voice_command_text,
+    split_trailing_voice_control_command,
+    voice_control_command_from_text,
+)
+from ..windows import PasteTarget, get_paste_target
 from ..core.realtime import (
     dedupe_stream_chunk as core_dedupe_stream_chunk,
     get_missing_final_tail as core_get_missing_final_tail,

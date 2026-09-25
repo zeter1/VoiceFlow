@@ -6,7 +6,18 @@ makes navigation, review and future extraction safer.
 
 from __future__ import annotations
 
-from ..context import *  # noqa: F401,F403 - compatibility surface for extracted methods
+from tkinter import messagebox
+
+from ..config import APP_NAME, HOTKEY_CAPTURE_CLEAR_KEYS, HOTKEY_MODIFIERS
+from ..dependencies import get_input_devices
+from ..diagnostics import log_exception, log_info, log_warning
+from ..hotkey_config import (
+    canonical_hotkey,
+    is_valid_hotkey_non_modifier,
+    normalize_hotkey,
+    pretty_hotkey,
+    tk_event_to_hotkey_part,
+)
 
 
 class ControlsMixin:

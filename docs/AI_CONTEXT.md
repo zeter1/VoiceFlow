@@ -8,7 +8,14 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 
 ## Физическая карта
 
-- runtime.py: settings, diagnostics and Windows adapters.
+- runtime.py: compatibility facade only; do not add new implementation.
+- config.py: paths and runtime constants.
+- diagnostics.py: logs, diagnostics and exception hooks.
+- dependencies.py: third-party modules and microphone discovery.
+- hotkey_config.py: shortcut normalization/VK mapping.
+- settings.py: persisted and runtime settings.
+- voice_commands.py: voice command vocabulary/parsing.
+- windows.py: Windows startup/target/native paste adapters.
 - core/realtime.py: pure realtime text decisions.
 - core/recording_state.py: pure recording state/repair classification.
 - core/hotkey_state.py: pure hotkey edge/debounce decisions.
@@ -75,3 +82,5 @@ Return: source commit -> actual delta -> checks PASS/FAIL -> NOT VERIFIED -> res
 ## Educational documentation
 
 User-facing guides are isolated under user-guide/. Technical/AI work should start from AGENTS.md, ARCHITECTURE.md, AI_CONTEXT.md and DEVELOPMENT.md rather than scanning tutorial files.
+
+Architecture 2.1 rule: app/* and entrypoint.py use explicit owner imports. context.py no longer exists. runtime.py is a compatibility surface, not an implementation owner.

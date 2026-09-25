@@ -26,3 +26,13 @@
 
 - Удалён оставшийся фрагмент старой inline hotkey edge-логики, который попал в mechanical extraction и вызвал IndentationError в первом CI run Architecture 2.0.
 - Runtime polling теперь имеет один source of truth: core/hotkey_state.py.
+
+## 2026-09-25 — Architecture 2.1: Context Elimination & Runtime Decomposition
+
+- Удалён transitional voiceflow_app/context.py.
+- ui.py, controls.py, streaming.py, actions.py и entrypoint.py переведены с wildcard context imports на явные owner imports.
+- 1400+ строк runtime.py разделены на config.py, diagnostics.py, dependencies.py, hotkey_config.py, settings.py, voice_commands.py и windows.py.
+- runtime.py оставлен только как небольшой backward-compatible facade для ещё не мигрированных legacy services/UI и внешних import paths.
+- Добавлены architecture guards: context.py не может вернуться незаметно, app orchestration не допускает wildcard imports, runtime facade ограничен по размеру.
+- AI/architecture документация синхронизирована с новыми владельцами.
+- Windows portable binary пересобирается после изменения import/package graph.

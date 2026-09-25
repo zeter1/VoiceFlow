@@ -1,18 +1,16 @@
 # Изменения Windows-сборки
 
-## Architecture 2.0 — Testable Realtime Core
+## Architecture 2.1 — явные зависимости и декомпозиция runtime
 
-- Критические решения realtime-ввода по deduplication, пунктуации, continuation/final-tail и trailing voice commands вынесены в отдельное чистое ядро.
-- Recording state и hotkey edge/debounce получили отдельные deterministic state-machine модули.
-- Добавлены regression tests, которые проверяют эти правила без запуска GUI, микрофона и Whisper.
-- Hotkey polling теперь использует тестируемую edge state machine, сохраняя защиту от дребезга и слишком близких повторных нажатий.
-- Убраны wildcard context imports из main_window, recording и hotkeys; transitional bridge остаётся только для ещё не мигрированных legacy mixins.
-- Обучающие инструкции перенесены в docs/user-guide/, отдельно от инженерной и AI-документации.
-
-- Исправлен mechanical extraction artifact первого Architecture 2.0 commit; финальная сборка повторно проходит compile/test/package gates.
+- Полностью удалён transitional context.py.
+- Основные app-модули и startup entrypoint больше не получают зависимости через wildcard import.
+- Большой runtime.py разделён по ответственности: config, diagnostics, dependencies, hotkey config, settings, voice commands и Windows adapters.
+- runtime.py теперь небольшой compatibility facade, а не место для бизнес-логики.
+- Добавлены автоматические architecture guards, которые защищают новые границы от обратного слияния в монолит.
+- Сохранены прежние пути пользовательских logs/settings и старый запуск python voiceflow.py.
 
 ## Проверка сборки
 
-GitHub Actions компилирует весь package и tests, выполняет offline regressions, собирает VoiceFlow.exe, запускает packaged --self-test и публикует portable ZIP + SHA-256.
+GitHub Actions должен выполнить compile, offline regression/architecture tests, PyInstaller build, packaged VoiceFlow.exe --self-test, ZIP/SHA-256 и публикацию prerelease.
 
-Реальный микрофон, глобальные hotkeys в пользовательской Windows-сессии, вставка в сторонние приложения, загрузка Whisper-модели и CUDA на пользовательском GPU требуют отдельной runtime-проверки.
+Реальный микрофон, CUDA, глобальная горячая клавиша и вставка в сторонние Windows-приложения требуют отдельной интерактивной runtime-проверки.

@@ -6,7 +6,25 @@ makes navigation, review and future extraction safer.
 
 from __future__ import annotations
 
-from ..context import *  # noqa: F401,F403 - compatibility surface for extracted methods
+import threading
+import time
+import tkinter as tk
+from tkinter import ttk
+from typing import Optional
+
+from ..config import (
+    COMPUTE_TYPE_OPTIONS,
+    INFERENCE_DEVICE_OPTIONS,
+    IS_WINDOWS,
+    QUALITY_OPTIONS,
+    STREAMING_INTERVAL_OPTIONS,
+    STREAMING_SPEED_OPTIONS,
+    WHISPER_MODEL_OPTIONS,
+)
+from ..diagnostics import log_category, log_exception, log_info
+from ..hotkey_config import normalize_hotkey, pretty_hotkey
+from ..settings import SettingsStore
+from ..windows import PasteTarget, get_paste_target
 
 
 class UiMixin:

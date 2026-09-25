@@ -2,7 +2,26 @@
 
 from __future__ import annotations
 
-from .context import *  # noqa: F401,F403
+import json
+import sys
+import tkinter as tk
+from tkinter import ttk
+
+from .config import (
+    APP_DIR,
+    APP_NAME,
+    LAST_RUN_DIR,
+    LOG_DIR,
+    RUN_LOG_DIR,
+    START_MINIMIZED,
+)
+from .dependencies import Image, ImageDraw, WhisperModel, keyboard, np, pyautogui, pyperclip, pystray, sd
+from .diagnostics import (
+    acquire_single_instance_lock,
+    install_exception_logging,
+    log_info,
+    write_diagnostics_snapshot,
+)
 from .app.main_window import VoiceFlowOfflineApp
 
 
