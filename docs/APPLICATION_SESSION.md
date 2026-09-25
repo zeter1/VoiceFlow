@@ -81,3 +81,11 @@ The explicit deferred-discard regression test exists because clearing frames bef
 5. Run compile + full offline unittest suite.
 6. For package-affecting changes run PyInstaller + packaged `--self-test`.
 7. Real microphone/hotkey/CUDA/paste claims remain NOT VERIFIED until interactive Windows evidence exists.
+
+## Realtime worker/message integration
+
+The session controller remains authoritative for `session_id` and committed text. Architecture 2.5 adds a separate message boundary rather than moving that ownership.
+
+Background realtime work produces `WorkerMessage` values. `worker_messages.classify_stream_result()` compares payload session id with the current controller session before `WorkerDispatchMixin` is allowed to update widgets or insertion state. A result from an old session is discarded; a current result arriving after immediate stop is also discarded unless the app is explicitly finalizing.
+
+This separation is important for stop→restart races: the old worker may physically finish later, but it must not mutate the new session.

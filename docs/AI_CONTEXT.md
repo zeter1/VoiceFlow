@@ -21,10 +21,12 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 - windows.py: compatibility re-export for historical callers.
 - windows_startup.py: registry startup command/state.
 - windows_insertion.py: focused HWND/caret target and native paste.
-- core/realtime.py: pure realtime text decisions.
+- core/realtime.py: pure realtime text/dedupe/punctuation decisions.
+- core/realtime_policy.py: timing profiles, speech/chunk commit and final-cancellation decisions.
 - core/recording_state.py: pure recording state/repair classification.
 - core/hotkey_state.py: pure hotkey edge/debounce decisions.
 - services/audio.py: microphone capture.
+- services/audio_analysis.py: realtime audio statistics / noisy-room pause evidence.
 - services/transcription.py: model lifecycle and inference; backend environment is injected.
 - services/text_cleaner.py: punctuation/fillers/grammar/formatting.
 - services/contracts.py: Protocol contracts for the three service boundaries.
@@ -34,7 +36,9 @@ microphone -> AudioRecorder -> realtime buffer -> LocalTranscriber -> stability/
 - app/controls.py: microphone/hotkey controls.
 - app/hotkeys.py: registration/polling/debounce/dispatch.
 - app/recording.py: recording state transitions and warm-up.
-- app/streaming.py: realtime worker/queue/orchestration; dedupe/punctuation/tail decisions delegate to core/realtime.py.
+- app/streaming.py: realtime producer/recognition/insertion orchestration; emits typed worker messages.
+- app/worker_dispatch.py: main-thread typed queue decode, stale-session/after-stop filtering and UI/application routing.
+- worker_messages.py: message kinds/payloads, legacy coercion seam and pure session-result gates.
 - app/actions.py: copy/paste/settings/shutdown.
 - ui/notifications.py and ui/tray.py: UI infrastructure.
 - entrypoint.py: startup + packaged self-test.
@@ -51,7 +55,7 @@ Tk main thread handles widgets. Capture/inference use background execution. Work
 
 ## Realtime contract
 
-Confirmed fragments are inserted during recording. `core/realtime.py` owns pure text decisions, `HeadlessSessionController` owns committed-text/session state, and `app/streaming.py` owns worker/UI/insertion orchestration. Stop must release session state without pasting the full transcript again.
+Confirmed fragments are inserted during recording. `services/audio_analysis.py` owns audio evidence, `core/realtime_policy.py` owns commit/cancel policy, `core/realtime.py` owns pure text decisions, `HeadlessSessionController` owns committed-text/session state, `app/streaming.py` owns worker/recognition/insertion production, and `app/worker_dispatch.py` owns main-thread message application. Stop must release session state without pasting the full transcript again.
 
 ## Hotkey diagnostics
 
@@ -106,3 +110,15 @@ Hardware/environment knowledge must stop at adapter boundaries. `LocalTranscribe
 Для start/stop race, repeated start, finalizing, recovery или committed-text regressions сначала открой [APPLICATION_SESSION.md](APPLICATION_SESSION.md) и `app/session_controller.py`. Не начинай с Tk widgets.
 
 Для testable full path без GUI используй injected fakes: recorder → frames_to_wav → transcriber → cleaner → record_commit → stop. Production composition создаётся только в `composition.py`.
+
+## Realtime debugging route
+
+Пауза/шум/слишком ранний или поздний commit → `services/audio_analysis.py` + `core/realtime_policy.py` + `streaming.jsonl`.
+
+Повтор/хвост/пунктуация → `core/realtime.py`.
+
+Результат старой session, поздний message после stop, queue payload → `worker_messages.py` + `app/worker_dispatch.py` + `worker_queue.jsonl`.
+
+Thread/Whisper worker lifecycle → `app/streaming.py`.
+
+Полная карта и invariants: [REALTIME_PIPELINE.md](REALTIME_PIPELINE.md).

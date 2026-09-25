@@ -85,3 +85,22 @@ Persisted schema/store → `settings.py`; widgets/editing controls → `app/ui.p
 Concrete recorder/transcriber/cleaner/notification/tray construction belongs in `composition.py`. Keep those imports lazy so `ApplicationServices` and session tests remain importable before optional/package dependencies are installed.
 
 Do not move Tk widgets into `session_controller.py`. Do not duplicate `session_id` or committed-text ownership back into mixins.
+
+## Architecture 2.5 realtime boundaries
+
+Canonical owners:
+- audio facts / adaptive noisy-room pause metrics → `services/audio_analysis.py`;
+- realtime timing / wait-vs-advance-vs-commit / final cancellation → `core/realtime_policy.py`;
+- dedupe, punctuation, final-tail, voice-command text split → `core/realtime.py`;
+- recognition worker and message production → `app/streaming.py`;
+- queue message schema + stale/after-stop pure gates → `worker_messages.py`;
+- main-thread queue decode and application/UI routing → `app/worker_dispatch.py`.
+
+Dependency direction:
+- `core/realtime_policy.py` → config constants + stdlib only;
+- `services/audio_analysis.py` → stdlib at import time; production NumPy import is lazy;
+- `worker_messages.py` → stdlib only;
+- `app/streaming.py` may depend on the pure policy/message/service owners;
+- `app/worker_dispatch.py` may call app/UI methods but must not become an inference/audio worker.
+
+Do not place signal math back into `streaming.py`, do not place Tk/application effects into `worker_messages.py`, and do not bypass typed producers with new direct tuple queue writes.

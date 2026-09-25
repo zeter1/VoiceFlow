@@ -98,3 +98,11 @@ Non-responsibilities:
 - pure dedupe/punctuation policy (that stays in `core/realtime.py`).
 
 Offline proof: `tests/test_session_controller.py` covers start→frames→transcription→commit→stop, double-start rejection, stop/restart, failed-start recovery, failed-stop recovery, finalizing race and deferred frame discard.
+
+## Realtime audio-analysis adapter
+
+`services/audio_analysis.py` is adjacent to AudioRecorder but is not another capture service. It turns frame samples into signal facts used by the pure realtime policy: duration, RMS, peak, active ratio, raw trailing silence and adaptive speech trailing silence.
+
+Its threshold/stat-summary helpers are dependency-free. The production `stream_audio_stats()` wrapper imports NumPy lazily, so policy/unit tests do not require audio runtime initialization.
+
+Do not move commit timing into this adapter. Audio analysis reports facts; `core/realtime_policy.py` decides what those facts mean for streaming.

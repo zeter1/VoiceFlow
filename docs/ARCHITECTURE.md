@@ -29,7 +29,7 @@ Architecture 2.1 убирает giant runtime owner:
 
 ## Pure core
 
-voiceflow_app/core/realtime.py содержит deterministic решения dedupe, bad-chunk rejection, punctuation, continuation casing, final-tail и trailing voice-command split. Он не импортирует Tkinter, device/Whisper adapters или runtime facade.
+voiceflow_app/core/realtime.py содержит deterministic решения dedupe, bad-chunk rejection, punctuation, continuation casing, final-tail и trailing voice-command split. `core/realtime_policy.py` отдельно владеет timing profiles, speech/commit gate и final-chunk cancellation. Оба не импортируют Tkinter, device/Whisper adapters или runtime facade.
 
 voiceflow_app/core/recording_state.py классифицирует recording snapshot и решает, когда idle state является stale/recoverable.
 
@@ -40,6 +40,7 @@ voiceflow_app/core/hotkey_state.py хранит edge state machine физиче�
 ## Services
 
 services/audio.py — microphone capture и frame lifecycle.
+services/audio_analysis.py — realtime signal statistics, adaptive noisy-room pause metrics; NumPy импортируется лениво только production wrapper-ом.
 services/transcription.py — lazy faster-whisper model lifecycle/inference; CUDA environment policy приходит через injected backend runtime.
 services/text_cleaner.py — punctuation, fillers, typo repair, sentence flow, term preservation, optional LanguageTool and output modes.
 
@@ -62,7 +63,9 @@ app/ui.py — widgets/state/notifications.
 app/controls.py — microphone/hotkey editor.
 app/hotkeys.py — Windows polling/dispatch; edge/debounce decisions делегируются core/hotkey_state.py.
 app/recording.py — side effects start/stop/warm-up; state classification делегируется core/recording_state.py.
-app/streaming.py — chunk scheduling, speech stats, dedupe, realtime worker, queue and voice commands.
+app/streaming.py — realtime worker, transcription/context, text-piece/insertion and voice-command execution; timing/audio/dispatch decisions делегируются отдельным owners.
+app/worker_dispatch.py — main-thread worker queue decode, stale-session/after-stop gates, UI/application routing.
+worker_messages.py — typed queue message contract.
 app/actions.py — copy/paste, settings, window lifecycle and shutdown.
 
 ## Runtime data flow
@@ -123,3 +126,19 @@ UI adapters are injected through `app/ports.py`; desktop implementations remain 
 The headless controller deliberately does not own Tk status/button/timer state. Tk mixins translate controller/service outcomes into UI. This prevents a second GUI-free controller from silently becoming another UI state source.
 
 Stop ordering is an explicit compatibility invariant: recorder stop keeps frames → realtime worker gets stop signal → buffered frames are discarded. Do not reorder this without a regression test and runtime evidence.
+
+## Architecture 2.5 realtime split
+
+Realtime path теперь проходит через отдельные owners:
+
+`AudioRecorder frames → services/audio_analysis.py → core/realtime_policy.py → app/streaming.py → WorkerMessage → app/worker_dispatch.py → UI/insertion`.
+
+`audio_analysis` отвечает только за измеряемые signal facts: duration/RMS/peak/activity/trailing silence и adaptive speech pause. `realtime_policy` принимает facts + profile и возвращает wait/advance/commit/final-cancel decision. Это позволяет тестировать шум/паузы и timing без Tk, Whisper и микрофона.
+
+`app/streaming.py` остаётся producer/orchestrator: получает frames, вызывает headless session transcription, применяет text cleanup/dedupe policy и публикует typed worker messages.
+
+`worker_messages.py` является contract между background producers и main thread. `app/worker_dispatch.py` — единственный owner main-thread decode/application routing; stale session и result-after-stop проверяются до изменения UI.
+
+Critical invariant: worker старой session не должен менять текущую session. Queue producer не должен снова использовать ad-hoc string/tuple contract там, где существует WorkerMessageKind/payload dataclass.
+
+See also: REALTIME_PIPELINE.md.

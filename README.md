@@ -93,11 +93,15 @@ microphone
    ↓
 audio capture
    ↓
-realtime buffering / worker queue
+realtime audio statistics
+   ↓
+commit / pause policy
    ↓
 faster-whisper inference
    ↓
 stability + deduplication
+   ↓
+typed worker queue + stale-session gate
    ↓
 voice commands / cleanup
    ↓
@@ -106,7 +110,7 @@ Windows text insertion
 active application
 ```
 
-Подробно границы подсистем, lifecycle диктовки, CPU/CUDA paths, deduplication и insertion layer описаны в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Для ChatGPT/Codex есть отдельная карта: [`AGENTS.md`](AGENTS.md) + [`docs/AI_CONTEXT.md`](docs/AI_CONTEXT.md) + [`docs/IMPORT_BOUNDARIES.md`](docs/IMPORT_BOUNDARIES.md) + [`docs/APPLICATION_SESSION.md`](docs/APPLICATION_SESSION.md).
+Подробно границы подсистем, lifecycle диктовки, CPU/CUDA paths, deduplication и insertion layer описаны в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Для ChatGPT/Codex есть отдельная карта: [`AGENTS.md`](AGENTS.md) + [`docs/AI_CONTEXT.md`](docs/AI_CONTEXT.md) + [`docs/IMPORT_BOUNDARIES.md`](docs/IMPORT_BOUNDARIES.md) + [`docs/APPLICATION_SESSION.md`](docs/APPLICATION_SESSION.md) + [`docs/REALTIME_PIPELINE.md`](docs/REALTIME_PIPELINE.md).
 
 ## Конфиденциальность
 
@@ -192,6 +196,7 @@ CI выполняет syntax/compile и offline repository-contract regression t
 - [Import boundaries для разработки и AI](docs/IMPORT_BOUNDARIES.md)
 - [Application/session architecture и headless tests](docs/APPLICATION_SESSION.md)
 - [Service contracts и adapters](docs/SERVICE_CONTRACTS.md)
+- [Realtime pipeline, queue contracts и race guards](docs/REALTIME_PIPELINE.md)
 - [Repo-инструкции для AI-агентов](AGENTS.md)
 - дополнительные пользовательские инструкции находятся в каталоге [`docs/`](docs/)
 - [Security and privacy](SECURITY.md)

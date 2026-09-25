@@ -14,6 +14,7 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - voiceflow_app/composition.py — default/injectable ApplicationServices composition root.
 - voiceflow_app/runtime.py — small backward-compatible facade only; new internal code must not put implementation here.
 - voiceflow_app/core/realtime.py — pure dedupe/punctuation/final-tail/voice-command decisions.
+- voiceflow_app/core/realtime_policy.py — pure timing/profile/chunk-commit/final-cancellation policy.
 - voiceflow_app/core/recording_state.py — pure recording-state classification.
 - voiceflow_app/core/hotkey_state.py — pure hotkey edge/debounce decisions.
 - voiceflow_app/config.py — paths and stable runtime constants.
@@ -28,6 +29,7 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - voiceflow_app/voice_commands.py — command vocabulary and parsing.
 - voiceflow_app/windows.py — startup, foreground target and native paste adapters.
 - services/audio.py — AudioRecorder.
+- services/audio_analysis.py — realtime audio statistics; NumPy loaded lazily for production frames.
 - services/transcription.py — LocalTranscriber / faster-whisper; environment probing is injected.
 - services/text_cleaner.py — LocalTextCleaner.
 - services/contracts.py — explicit Protocol contracts for recorder/transcriber/cleaner.
@@ -40,7 +42,9 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - app/controls.py — microphone + hotkey editor controls.
 - app/hotkeys.py — global hotkey polling/dispatch.
 - app/recording.py — start/stop/warm-up.
-- app/streaming.py — realtime orchestration/worker/queue; pure chunk decisions live in core/realtime.py.
+- app/streaming.py — realtime producer/recognition/insertion orchestration; no main-thread queue dispatch.
+- app/worker_dispatch.py — typed worker queue decoding, stale-session gates and main-thread UI/application routing.
+- worker_messages.py — typed queue message kinds/payloads and pure session-result gates.
 - app/actions.py — copy/paste/settings/window lifecycle/shutdown.
 - tests/test_session_controller.py — headless lifecycle/race/recovery integration tests.
 - tests/test_composition.py — composition injection contract.
@@ -50,6 +54,7 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 - docs/DEVELOPMENT.md — verification/release commands.
 - docs/IMPORT_BOUNDARIES.md — canonical import owners and dependency directions.
 - docs/SERVICE_CONTRACTS.md — service ports, adapters, injection seams and offline-test strategy.
+- docs/REALTIME_PIPELINE.md — realtime audio→policy→worker-message→dispatch ownership and race contracts.
 
 ## Critical invariants
 
@@ -70,6 +75,8 @@ Source of truth order: current main/files -> failing test/Actions/runtime logs -
 Microphone capture -> services/audio.py + app/session_controller.py + app/recording.py. Microphone enumeration -> audio_devices.py + app/controls.py.
 Whisper/model -> services/transcription.py + app/streaming.py. CUDA/DLL/preflight -> cuda_runtime.py.
 Duplicates/missing realtime text -> core/realtime.py + app/session_controller.py committed state + app/streaming.py.
+Pause/noise/forced-commit behavior -> services/audio_analysis.py + core/realtime_policy.py.
+Stale worker result / queue race -> worker_messages.py + app/worker_dispatch.py + worker_queue.jsonl.
 Punctuation/cleanup -> services/text_cleaner.py.
 Voice commands -> voice_commands.py parsing + app/streaming.py execution.
 Hotkey starts once/double fires -> app/hotkeys.py + hotkey_trace.jsonl.
@@ -119,3 +126,11 @@ Application orchestration depends on service behavior, not CUDA/DLL/PortAudio/re
 `app/session_controller.py` is stdlib + service-contract based and is the preferred seam for capture lifecycle/session identity/committed realtime text and frames→WAV→transcription orchestration. Preserve the stop ordering invariant: stop capture → signal realtime worker → discard buffered frames.
 
 Before changing start/stop/restart/finalizing behavior, run/read `tests/test_session_controller.py` and `docs/APPLICATION_SESSION.md`.
+
+## Architecture 2.5 realtime boundary
+
+Realtime ownership is deliberately split: `services/audio_analysis.py` measures audio, `core/realtime_policy.py` decides whether a candidate should wait/advance/commit, `app/streaming.py` performs recognition and emits typed messages, and `app/worker_dispatch.py` applies messages on the main thread.
+
+All new producer messages should use `put_worker_message(...)` with `WorkerMessageKind`; do not reintroduce `worker_queue.put(("string", payload))`. Stale/after-stop result acceptance belongs in `worker_messages.py`, not scattered UI branches.
+
+Before changing pause/noise/cancellation/session-result behavior, read `docs/REALTIME_PIPELINE.md` and run `test_realtime_audio.py`, `test_realtime_policy.py`, `test_worker_messages.py` plus the existing realtime/session suite.
