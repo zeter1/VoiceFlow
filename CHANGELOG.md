@@ -41,3 +41,10 @@
 
 - Обновлён repository contract для APP_DIR: после декомпозиции canonical owner пути приложения находится в config.py, а не в compatibility runtime.py.
 - Первый Architecture 2.1 CI run подтвердил compile и остальные 27 тестов; stale structural oracle исправлен без изменения runtime behavior.
+
+### Packaged self-test hardening
+
+- voiceflow.py дополнительно упрощён: теперь он импортирует только startup entrypoint.
+- GUI/app import graph перенесён за --self-test gate; packaged self-test ловит import regressions и пишет structured JSON evidence.
+- GitHub Actions smoke-test получил bounded 90-second timeout, принудительное завершение зависшего EXE и вывод self-test payload.
+- Это устраняет возможность бесконечно ждать windowed PyInstaller error dialog при import-time regression.

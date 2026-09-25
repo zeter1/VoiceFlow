@@ -72,7 +72,24 @@ jobs:
         run: |
           $exe = 'dist\VoiceFlow\VoiceFlow.exe'
           if (-not (Test-Path $exe)) { throw 'VoiceFlow.exe was not created' }
-          $process = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -Wait
+
+          $selfTestOutput = Join-Path $env:RUNNER_TEMP 'voiceflow-self-test.json'
+          if (Test-Path $selfTestOutput) { Remove-Item $selfTestOutput -Force }
+          $env:VOICEFLOW_SELF_TEST_OUTPUT = $selfTestOutput
+
+          $process = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru
+          if (-not $process.WaitForExit(90000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw 'Packaged self-test timed out after 90 seconds'
+          }
+
+          if (Test-Path $selfTestOutput) {
+            Write-Host 'Packaged self-test payload:'
+            Get-Content $selfTestOutput
+          } else {
+            Write-Warning 'Packaged self-test did not create its diagnostic payload'
+          }
+
           if ($process.ExitCode -ne 0) { throw "Packaged self-test failed with exit code $($process.ExitCode)" }
           Get-Item $exe | Format-List Name,Length,LastWriteTime
 
