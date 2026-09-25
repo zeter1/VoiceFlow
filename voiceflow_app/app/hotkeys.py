@@ -346,48 +346,6 @@ class HotkeyMixin:
                             key_states=key_states,
                         )
                 except Exception as exc:
-                                self.log_hotkey_trace(
-                                    "poll_press_queue_failed",
-                                    hotkey=hotkey,
-                                    generation=generation,
-                                    error=str(exc),
-                                )
-                                break
-                        else:
-                            held_for = now - press_started_at if press_started_at else 0.0
-                            if held_for >= WINDOWS_HOTKEY_STUCK_DOWN_LOG_SECONDS and now - last_stuck_log_at >= WINDOWS_HOTKEY_STUCK_DOWN_LOG_SECONDS:
-                                last_stuck_log_at = now
-                                self.log_hotkey_trace(
-                                    "poll_key_still_down",
-                                    hotkey=hotkey,
-                                    generation=generation,
-                                    held_for=round(held_for, 3),
-                                    key_states=key_states,
-                                )
-                    else:
-                        if was_down:
-                            if release_started_at is None:
-                                release_started_at = now
-                                self.log_hotkey_trace(
-                                    "poll_release_started",
-                                    hotkey=hotkey,
-                                    generation=generation,
-                                    held_for=round(now - press_started_at, 3) if press_started_at else None,
-                                    key_states=key_states,
-                                )
-                            elif now - release_started_at >= WINDOWS_HOTKEY_RELEASE_STABLE_SECONDS:
-                                was_down = False
-                                self.log_hotkey_trace(
-                                    "poll_release_confirmed_rearmed",
-                                    hotkey=hotkey,
-                                    generation=generation,
-                                    release_stable_for=round(now - release_started_at, 3),
-                                    held_for=round(now - press_started_at, 3) if press_started_at else None,
-                                    key_states=key_states,
-                                )
-                                press_started_at = None
-                                release_started_at = None
-                except Exception as exc:
                     log_exception("Windows hotkey polling failed", exc, hotkey=hotkey, generation=generation)
                     try:
                         self.log_hotkey_trace("polling_exception", hotkey=hotkey, generation=generation, error=str(exc))

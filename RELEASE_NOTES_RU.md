@@ -9,6 +9,8 @@
 - Убраны wildcard context imports из main_window, recording и hotkeys; transitional bridge остаётся только для ещё не мигрированных legacy mixins.
 - Обучающие инструкции перенесены в docs/user-guide/, отдельно от инженерной и AI-документации.
 
+- Исправлен mechanical extraction artifact первого Architecture 2.0 commit; финальная сборка повторно проходит compile/test/package gates.
+
 ## Проверка сборки
 
 GitHub Actions компилирует весь package и tests, выполняет offline regressions, собирает VoiceFlow.exe, запускает packaged --self-test и публикует portable ZIP + SHA-256.

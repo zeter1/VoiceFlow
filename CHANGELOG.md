@@ -21,3 +21,8 @@
 - Пользовательская образовательная документация перенесена из корня docs/ в docs/user-guide/.
 - Техническая документация и AI-навигация обновлены под новые boundaries.
 - Windows portable binary пересобирается и проходит packaged self-test.
+
+### Corrective validation fix
+
+- Удалён оставшийся фрагмент старой inline hotkey edge-логики, который попал в mechanical extraction и вызвал IndentationError в первом CI run Architecture 2.0.
+- Runtime polling теперь имеет один source of truth: core/hotkey_state.py.
