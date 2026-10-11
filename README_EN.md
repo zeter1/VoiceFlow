@@ -6,6 +6,18 @@
 
 The application does not require an OpenAI API key for speech recognition. After the selected model is downloaded, transcription runs locally on the computer.
 
+## Download and run on Windows
+
+> Windows builds are marked **Prerelease**: they are preliminary builds for testing. A release build may differ from the current source.
+
+1. Open [GitHub Releases](https://github.com/zeter1/VoiceFlow/releases) and expand **Assets** for the build you choose.
+2. Download `VoiceFlow-Windows-x64.zip` and extract the entire archive.
+3. Run `VoiceFlow.exe`, select a microphone/model, and configure the dictation hotkey.
+
+Python and project dependencies are included; keep the entire extracted folder. **The selected Whisper model is downloaded separately**, requiring internet for that download. Recognition then runs locally without an OpenAI API key.
+
+CPU mode is available without NVIDIA. GPU mode requires a compatible NVIDIA driver and CUDA/cuDNN components. A SHA-256 file is published beside the ZIP. See the [user guide](docs/user-guide/README.md) for configuration.
+
 ## What the project demonstrates
 
 - a real-time speech pipeline with local recognition;
@@ -33,7 +45,7 @@ The application does not require an OpenAI API key for speech recognition. After
 - autostart through `HKCU\Run`;
 - detailed diagnostics for hotkeys, recording, recognition, and insertion.
 
-## Installation
+## Installation from source
 
 1. Install an x64 Python 3.11–3.13 build for Windows.
 2. Download the project with **Code → Download ZIP** or Git:
@@ -56,7 +68,7 @@ For NVIDIA acceleration, use a current NVIDIA driver and a compatible CUDA/cuDNN
 
 The selected Whisper model may be downloaded automatically on first use.
 
-## Launch
+## Launch from source
 
 ```powershell
 py voiceflow.py
