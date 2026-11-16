@@ -221,7 +221,7 @@ CI выполняет syntax/compile и offline repository-contract regression t
 
 Новые запуски создают диагностические файлы рядом с программой в папке **`Логи проблем`**. Внутри находятся отдельные `run_...` каталоги и `_last_run` с копией последнего запуска. Старая папка `voiceflow_logs`, если она осталась от предыдущих версий, автоматически не удаляется.
 
-## Контакты для связи с разработчиком
+## Контакты для связи:
 
 - [zeter11@gmail.com](mailto:zeter11@gmail.com)
 - [https://t.me/zeter1](https://t.me/zeter1)
@@ -233,4 +233,5 @@ CI выполняет syntax/compile и offline repository-contract regression t
 - [https://x.com/zeter1](https://x.com/zeter1)
 - [https://www.threads.com/@zeter1992](https://www.threads.com/@zeter1992)
 - [https://ok.ru/zeter1](https://ok.ru/zeter1)
-- [https://t.me/zeterchat](https://t.me/zeterchat) — Telegram-группа: обо мне, проекты и чат
+- [https://t.me/zeterchat](https://t.me/zeterchat) - Telegram-группа для общения
+- [https://dkoles.com/](https://dkoles.com/) - сайт.
